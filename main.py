@@ -6,7 +6,9 @@ import math
 import threading
 import webbrowser
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import filedialog, messagebox
+import ttkbootstrap as ttk
+from ttkbootstrap.constants import *
 from PIL import Image, ImageDraw, ImageFont
 from pypdf import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
@@ -101,8 +103,12 @@ class GeradorCarimbos:
 class AppMaster:
     def __init__(self, root):
         self.root = root
-        self.root.title("Carimbador Pro - Prefeitura v10.0 (Auto-Ajuste)")
-        self.root.geometry("650x750")
+        self.root.title("Carimbador Pro - v10.0")
+        self.root.geometry("680x800")
+        
+        # Ícone se existir
+        # try: self.root.iconbitmap(os.path.join(BASE_DIR, 'icone.ico'))
+        # except: pass
         
         self.gerador = GeradorCarimbos()
         self.config = self.carregar_config()
@@ -142,106 +148,129 @@ class AppMaster:
         estado = "normal" if self.var_ajuste_manual.get() else "disabled"
         self.spin_x.config(state=estado)
         self.spin_y.config(state=estado)
-        # Não atualizamos coords aqui para não sobrescrever caso seja PDF existente,
-        # a atualização será dinâmica durante o processamento.
 
     def _montar_layout(self):
-        f_footer = ttk.Frame(self.root, padding=(0, 5))
-        f_footer.pack(side="bottom", fill="x")
-        
-        lbl_autor = ttk.Label(f_footer, text="Desenvolvido por Matheus Lôbo", 
-                              font=("Segoe UI", 8), foreground="#555", anchor="center")
-        lbl_autor.pack(side="top")
+        # Container Principal
+        container = ttk.Frame(self.root, padding=20)
+        container.pack(fill='both', expand=True)
 
-        lbl_site = ttk.Label(f_footer, text="www.matheuslobo.com", 
-                             font=("Segoe UI", 8, "bold"), foreground="#0066cc", cursor="hand2", anchor="center")
-        lbl_site.pack(side="top")
-        lbl_site.bind("<Button-1>", lambda e: webbrowser.open("https://www.matheuslobo.com"))
+        # Cabeçalho Simples
+        ttk.Label(container, text="Carimbador Automático", font=("Helvetica", 18, "bold"), bootstyle="primary").pack(pady=(0, 20))
 
-        nb = ttk.Notebook(self.root)
-        nb.pack(fill='both', expand=True, padx=10, pady=(10, 5)) 
+        # Notebook (Abas Modernas)
+        nb = ttk.Notebook(container, bootstyle="primary")
+        nb.pack(fill='both', expand=True)
         
-        f_exec = ttk.Frame(nb)
-        f_branco = ttk.Frame(nb)
-        f_conf = ttk.Frame(nb)
+        f_exec = ttk.Frame(nb, padding=20)
+        f_branco = ttk.Frame(nb, padding=20)
+        f_conf = ttk.Frame(nb, padding=20)
         
-        nb.add(f_exec, text="📄 Processar PDF")
-        nb.add(f_branco, text="🖨️ Gerar em Branco")
-        nb.add(f_conf, text="⚙️ Configurações")
+        nb.add(f_exec, text="  Processar PDF  ")
+        nb.add(f_branco, text="  Gerar Folhas  ")
+        nb.add(f_conf, text="  Configurações  ")
 
         # === ABA 1 ===
-        fr = ttk.Frame(f_exec, padding=20); fr.pack(fill='both')
-        ttk.Label(fr, text="PDF Original:", font=("Arial", 9, "bold")).pack(anchor="w")
-        f_p = ttk.Frame(fr); f_p.pack(fill="x", pady=5)
-        ttk.Entry(f_p, textvariable=self.var_pdf).pack(side="left", fill="x", expand=True)
-        ttk.Button(f_p, text="Buscar", command=lambda: self.var_pdf.set(filedialog.askopenfilename(filetypes=[("PDF","*.pdf")]))).pack(side="left")
+        ttk.Label(f_exec, text="Selecione o arquivo PDF:", font=("Helvetica", 10)).pack(anchor="w")
+        
+        f_file = ttk.Frame(f_exec)
+        f_file.pack(fill="x", pady=5)
+        ttk.Entry(f_file, textvariable=self.var_pdf).pack(side="left", fill="x", expand=True, padx=(0, 10))
+        ttk.Button(f_file, text="Buscar PDF", command=lambda: self.var_pdf.set(filedialog.askopenfilename(filetypes=[("PDF","*.pdf")])), bootstyle="secondary").pack(side="left")
 
-        ttk.Label(fr, text="Prefeitura:", font=("Arial", 9, "bold")).pack(anchor="w", pady=(10,0))
-        self.cb_c = ttk.Combobox(fr, textvariable=self.var_carimbo, state="readonly")
+        ttk.Separator(f_exec, orient="horizontal").pack(fill="x", pady=15)
+
+        ttk.Label(f_exec, text="Selecione a Prefeitura:", font=("Helvetica", 10)).pack(anchor="w")
+        self.cb_c = ttk.Combobox(f_exec, textvariable=self.var_carimbo, state="readonly", bootstyle="primary")
         self.cb_c.pack(fill="x", pady=5)
         
-        f_n = ttk.Frame(fr); f_n.pack(fill="x", pady=15)
-        ttk.Label(f_n, text="Início:").pack(side="left")
-        ttk.Spinbox(f_n, textvariable=self.var_inicio, from_=1, to=999999, width=8).pack(side="left", padx=5)
-        ttk.Checkbutton(f_n, text="Pular Capa", variable=self.var_pular_capa).pack(side="left", padx=10)
+        f_opts = ttk.Labelframe(f_exec, text="Opções de Numeração", padding=15, bootstyle="info")
+        f_opts.pack(fill="x", pady=20)
+        
+        ttk.Label(f_opts, text="Iniciar em:").pack(side="left")
+        ttk.Spinbox(f_opts, textvariable=self.var_inicio, from_=1, to=999999, width=10).pack(side="left", padx=10)
+        ttk.Checkbutton(f_opts, text="Pular 1ª Página (Capa)", variable=self.var_pular_capa, bootstyle="round-toggle").pack(side="left", padx=20)
 
-        self.btn_run = ttk.Button(fr, text="CARIMBAR AGORA", command=self.processar_pdf_existente)
-        self.btn_run.pack(fill="x", pady=(20, 5), ipady=10)
-        self.progresso = ttk.Progressbar(fr, mode='indeterminate')
-        self.lbl_st = ttk.Label(fr, text="Pronto.", foreground="gray"); self.lbl_st.pack(pady=5)
+        # Botão de Ação destaque
+        self.btn_run = ttk.Button(f_exec, text="CARIMBAR AGORA", command=self.processar_pdf_existente, bootstyle="success", width=25)
+        self.btn_run.pack(pady=30, ipady=5)
+        
+        self.progresso = ttk.Progressbar(f_exec, mode='indeterminate', bootstyle="success-striped")
+        self.lbl_st = ttk.Label(f_exec, text="Aguardando...", foreground="gray", font=("Helvetica", 9))
+        self.lbl_st.pack(pady=5)
 
         # === ABA 2 ===
-        fb = ttk.Frame(f_branco, padding=20); fb.pack(fill='both')
-        ttk.Label(fb, text="Esta função gera folhas A4 em branco apenas com o carimbo.", foreground="#555").pack(pady=(0, 20))
-        ttk.Label(fb, text="Prefeitura:", font=("Arial", 9, "bold")).pack(anchor="w")
-        self.cb_c2 = ttk.Combobox(fb, textvariable=self.var_carimbo, state="readonly")
-        self.cb_c2.pack(fill="x", pady=5)
-        f_nb = ttk.Frame(fb); f_nb.pack(fill="x", pady=15)
-        f_col1 = ttk.Frame(f_nb); f_col1.pack(side="left", expand=True)
-        ttk.Label(f_col1, text="Qtd. Páginas:").pack(anchor="w")
-        ttk.Spinbox(f_col1, textvariable=self.var_qtd_paginas_branco, from_=1, to=1000, width=10).pack(anchor="w", pady=2)
-        f_col2 = ttk.Frame(f_nb); f_col2.pack(side="left", expand=True)
-        ttk.Label(f_col2, text="Numeração Inicial:").pack(anchor="w")
-        ttk.Spinbox(f_col2, textvariable=self.var_inicio, from_=1, to=999999, width=10).pack(anchor="w", pady=2)
-        self.btn_run_blank = ttk.Button(fb, text="GERAR PDF EM BRANCO", command=self.processar_em_branco)
-        self.btn_run_blank.pack(fill="x", pady=30, ipady=10)
-        self.lbl_st_blank = ttk.Label(fb, text="Pronto.", foreground="gray"); self.lbl_st_blank.pack()
-
-        # === ABA 3 ===
-        fc = ttk.Frame(f_conf, padding=15); fc.pack(fill='both')
-        lbl_diag = ttk.Label(fc, text="Posição Padrão (Clique no Canto):", font=("Arial", 9, "bold"))
-        lbl_diag.pack(anchor="n", pady=(0,5))
-        canvas_papel = tk.Frame(fc, bg="white", highlightbackground="#999", highlightthickness=1, width=150, height=210)
-        canvas_papel.pack(pady=5)
-        canvas_papel.pack_propagate(False)
-
-        # Usando lambda para atualizar a variavel de config, mas o calculo real é feito no processamento
-        estilo_rb = {"bg": "white", "activebackground": "white", "bd": 0, "font": ("Arial", 14)}
-        tk.Radiobutton(canvas_papel, text="", variable=self.var_pos_canto, value="sup_esq", **estilo_rb).place(relx=0.05, rely=0.02)
-        tk.Radiobutton(canvas_papel, text="", variable=self.var_pos_canto, value="sup_dir", **estilo_rb).place(relx=0.75, rely=0.02)
-        tk.Radiobutton(canvas_papel, text="", variable=self.var_pos_canto, value="inf_esq", **estilo_rb).place(relx=0.05, rely=0.85)
-        tk.Radiobutton(canvas_papel, text="", variable=self.var_pos_canto, value="inf_dir", **estilo_rb).place(relx=0.75, rely=0.85)
-
-        f_fino = ttk.LabelFrame(fc, text="Ajuste de Precisão", padding=10)
-        f_fino.pack(fill="x", pady=15)
-        ttk.Checkbutton(f_fino, text="Habilitar Manual (X, Y) - Ignora Posição Automática", variable=self.var_ajuste_manual, command=self.alternar_modo_posicao).pack(anchor="w")
-        f_spin = ttk.Frame(f_fino); f_spin.pack(pady=5)
-        ttk.Label(f_spin, text="X:").grid(row=0, column=0)
-        self.spin_x = ttk.Spinbox(f_spin, textvariable=self.var_pos_x, from_=0, to=600, width=8)
-        self.spin_x.grid(row=0, column=1, padx=5)
-        ttk.Label(f_spin, text="Y:").grid(row=0, column=2)
-        self.spin_y = ttk.Spinbox(f_spin, textvariable=self.var_pos_y, from_=0, to=850, width=8)
-        self.spin_y.grid(row=0, column=3, padx=5)
+        ttk.Label(f_branco, text="Gerar folhas em branco numeradas com carimbo.", font=("Helvetica", 10)).pack(anchor="w", pady=(0, 15))
         
-        ttk.Label(fc, text="Tamanho do Carimbo (pts):").pack()
-        ttk.Spinbox(fc, textvariable=self.var_tamanho, from_=50, to=300, width=10).pack()
+        ttk.Label(f_branco, text="Prefeitura:").pack(anchor="w")
+        self.cb_c2 = ttk.Combobox(f_branco, textvariable=self.var_carimbo, state="readonly", bootstyle="info")
+        self.cb_c2.pack(fill="x", pady=5)
+        
+        f_grid = ttk.Frame(f_branco); f_grid.pack(fill="x", pady=15)
+        
+        # Coluna 1
+        f_c1 = ttk.Frame(f_grid); f_c1.pack(side="left", fill="x", expand=True, padx=(0, 10))
+        ttk.Label(f_c1, text="Quantidade:").pack(anchor="w")
+        ttk.Spinbox(f_c1, textvariable=self.var_qtd_paginas_branco, from_=1, to=1000).pack(fill="x")
+        
+        # Coluna 2
+        f_c2 = ttk.Frame(f_grid); f_c2.pack(side="left", fill="x", expand=True)
+        ttk.Label(f_c2, text="Início da Numeração:").pack(anchor="w")
+        ttk.Spinbox(f_c2, textvariable=self.var_inicio, from_=1, to=999999).pack(fill="x")
 
-        f_add = ttk.LabelFrame(fc, text="Adicionar Nova Prefeitura", padding=10)
+        self.btn_run_blank = ttk.Button(f_branco, text="GERAR PDF EM BRANCO", command=self.processar_em_branco, bootstyle="primary", width=25)
+        self.btn_run_blank.pack(pady=40, ipady=5)
+        self.lbl_st_blank = ttk.Label(f_branco, text="Pronto.", foreground="gray", font=("Helvetica", 9)); self.lbl_st_blank.pack()
+
+        # === ABA 3 (CONFIG) ===
+        f_pos = ttk.Labelframe(f_conf, text="Posição do Carimbo", padding=15)
+        f_pos.pack(fill="both", expand=True)
+
+        ttk.Label(f_pos, text="Clique na posição desejada (folha A4):", font=("Helvetica", 9, "bold")).pack(pady=5)
+        
+        # Simulador Visual
+        canvas_papel = tk.Canvas(f_pos, bg="white", highlightthickness=1, width=150, height=210) # Canvas puro para desenhar
+        canvas_papel.pack(pady=10)
+        
+        # Pseudo-radiobuttons visuais
+        # Para simplificar com ttkbootstrap, usaremos Radiobuttons normais posicionados
+        # Truque: frame transparente ou place dentro do canvas
+        
+        fr_botoes = ttk.Frame(f_pos)
+        fr_botoes.pack(pady=10)
+        
+        # 'toolbutton-outline' faz eles parecerem botões de alternância
+        ttk.Radiobutton(fr_botoes, text="↖ Sup. Esq.", variable=self.var_pos_canto, value="sup_esq", bootstyle="toolbutton-outline").grid(row=0, column=0, padx=5, pady=5)
+        ttk.Radiobutton(fr_botoes, text="Sup. Dir. ↗", variable=self.var_pos_canto, value="sup_dir", bootstyle="toolbutton-outline").grid(row=0, column=1, padx=5, pady=5)
+        ttk.Radiobutton(fr_botoes, text="↙ Inf. Esq.", variable=self.var_pos_canto, value="inf_esq", bootstyle="toolbutton-outline").grid(row=1, column=0, padx=5, pady=5)
+        ttk.Radiobutton(fr_botoes, text="Inf. Dir. ↘", variable=self.var_pos_canto, value="inf_dir", bootstyle="toolbutton-outline").grid(row=1, column=1, padx=5, pady=5)
+
+        ttk.Separator(f_pos, orient="horizontal").pack(fill="x", pady=15)
+        
+        ttk.Checkbutton(f_pos, text="Modo Manual (Coordenadas Exatas)", variable=self.var_ajuste_manual, command=self.alternar_modo_posicao, bootstyle="round-toggle").pack(anchor="w")
+        
+        f_man = ttk.Frame(f_pos); f_man.pack(pady=10, fill="x")
+        ttk.Label(f_man, text="X:").pack(side="left")
+        self.spin_x = ttk.Spinbox(f_man, textvariable=self.var_pos_x, from_=0, to=600, width=8); self.spin_x.pack(side="left", padx=5)
+        ttk.Label(f_man, text="Y:").pack(side="left", padx=(10,0))
+        self.spin_y = ttk.Spinbox(f_man, textvariable=self.var_pos_y, from_=0, to=850, width=8); self.spin_y.pack(side="left", padx=5)
+        
+        f_tam = ttk.Frame(f_pos); f_tam.pack(pady=5, fill="x")
+        ttk.Label(f_tam, text="Tamanho (pts):").pack(side="left")
+        ttk.Spinbox(f_tam, textvariable=self.var_tamanho, from_=50, to=300, width=8).pack(side="left", padx=5)
+
+        # Adicionar Prefeitura
+        f_add = ttk.Labelframe(f_conf, text="Nova Prefeitura", padding=15, bootstyle="warning")
         f_add.pack(fill="x", pady=20)
+        
         self.entry_add = ttk.Entry(f_add)
-        self.entry_add.pack(side="left", fill="x", expand=True, padx=(0, 5))
-        ttk.Button(f_add, text="Gerar", command=self.add_prefeitura_inline).pack(side="left")
+        self.entry_add.pack(side="left", fill="x", expand=True, padx=(0,10))
+        ttk.Button(f_add, text="Criar", command=self.add_prefeitura_inline, bootstyle="warning").pack(side="left")
+
         self.atualizar_lista()
+        
+        # Footer
+        lbl_ft = ttk.Label(self.root, text="Desenvolvido por Matheus Lôbo  |  v10.0", font=("Helvetica", 8), foreground="#999")
+        lbl_ft.pack(side="bottom", pady=10)
 
     def atualizar_lista(self):
         if not os.path.exists(PASTA_CARIMBOS): os.makedirs(PASTA_CARIMBOS)
@@ -378,7 +407,8 @@ class AppMaster:
             self.root.after(0, lambda: self._finalizar_gui(True, f"Salvo em: {out}", proximo))
 
         except Exception as e:
-            self.root.after(0, lambda: self._finalizar_gui(False, str(e)))
+            err_msg = str(e)
+            self.root.after(0, lambda: self._finalizar_gui(False, err_msg))
 
     # --- PROCESSAMENTO EM BRANCO (MANTÉM A4 FIXO) ---
     def processar_em_branco(self):
@@ -401,7 +431,7 @@ class AppMaster:
 
     def _thread_branco(self, output_path, dados):
         self.root.after(0, lambda: self.btn_run_blank.config(state="disabled"))
-        self.root.after(0, lambda: self.lbl_st_blank.config(text="Gerando...", foreground="blue"))
+        self.root.after(0, lambda: self.lbl_st_blank.config(text="Gerando...", bootstyle="primary"))
         
         try:
             nome_selecionado = dados["nome_carimbo"]
@@ -436,12 +466,13 @@ class AppMaster:
             self.root.after(0, lambda: self._finalizar_blank(True, f"Gerado com sucesso!", proximo))
             
         except Exception as e:
-            self.root.after(0, lambda: self._finalizar_blank(False, str(e)))
+            err_msg = str(e)
+            self.root.after(0, lambda: self._finalizar_blank(False, err_msg))
 
     # --- MÉTODOS VISUAIS AUXILIARES ---
     def _iniciar_gui_processamento(self):
         self.btn_run.config(state="disabled")
-        self.lbl_st.config(text="Processando...", foreground="blue")
+        self.lbl_st.config(text="Processando...", bootstyle="primary")
         self.progresso.pack(fill='x', pady=(0, 10))
         self.progresso.start(10)
 
@@ -451,21 +482,24 @@ class AppMaster:
         self.btn_run.config(state="normal")
         if sucesso:
             self.var_inicio.set(proximo)
-            self.lbl_st.config(text=f"Concluído! Próx: {proximo}", foreground="green")
+            self.lbl_st.config(text=f"Concluído! Próx: {proximo}", bootstyle="success")
             messagebox.showinfo("Sucesso", msg)
         else:
-            self.lbl_st.config(text="Erro.", foreground="red")
+            self.lbl_st.config(text="Erro.", bootstyle="danger")
             messagebox.showerror("Erro", msg)
 
     def _finalizar_blank(self, sucesso, msg, proximo=None):
         self.btn_run_blank.config(state="normal")
         if sucesso:
             self.var_inicio.set(proximo)
-            self.lbl_st_blank.config(text=f"Concluído.", foreground="green")
+            self.lbl_st_blank.config(text=f"Concluído.", bootstyle="success")
             messagebox.showinfo("Sucesso", msg)
         else:
-            self.lbl_st_blank.config(text="Erro.", foreground="red")
+            self.lbl_st_blank.config(text="Erro.", bootstyle="danger")
             messagebox.showerror("Erro", msg)
 
 if __name__ == "__main__":
-    root = tk.Tk(); app = AppMaster(root); root.mainloop()
+    # Inicialização do Tema Moderno "Litera"
+    app = ttk.Window(themename="litera")
+    AppMaster(app)
+    app.mainloop()
