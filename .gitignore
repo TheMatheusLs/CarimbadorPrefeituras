@@ -1,0 +1,29 @@
+# Python internals
+__pycache__/
+*.py[cod]
+*$py.class
+
+# VS Code
+.vscode/
+
+# Virtual Environments
+venv/
+env/
+.env
+
+# Distribution / Build
+build/
+dist/
+*.spec
+*.exe
+
+# Project Specific Data
+Carimbos Prefeituras/
+config_v10.json
+
+# Logs and temporary files
+*.log
+*.tmp
+
+# User files (PDFs to avoid committing sensitive documents)
+*.pdf
