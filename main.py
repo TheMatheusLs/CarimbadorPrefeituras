@@ -30,7 +30,7 @@ PASTA_CARIMBOS = os.path.join(BASE_DIR, "Carimbos Prefeituras")
 
 class GeradorCarimbos:
     def __init__(self):
-        self.tamanho_canvas = 1200
+        self.tamanho_canvas = 200
         self.centro = 600
         self.raio_circulo = 480
         self.raio_texto = 400
@@ -264,7 +264,7 @@ class AppMaster:
 
         # Canvas Real
         self.cv_width = 300
-        self.cv_height = 260 # Reduzindo um pouco a altura
+        self.cv_height = 230 # Aumentando um pouco a altura
         f_cv_container = ttk.Frame(f_preview) # Wrapper para centralizar
         f_cv_container.pack()
         self.canvas = tk.Canvas(f_cv_container, width=self.cv_width, height=self.cv_height, bg="#f0f0f0", highlightthickness=0)
