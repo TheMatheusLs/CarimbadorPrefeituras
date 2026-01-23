@@ -126,10 +126,10 @@ class AppMaster:
         self.var_pos_y = tk.IntVar(value=self.config.get("pos_y", 730))
         self.var_tamanho = tk.IntVar(value=self.config.get("tamanho", 110))
 
-        # Cache para guardar coordenadas separadas
+        # Cache para guardar coordenadas separadas [X, Y, TAMANHO]
         self.cache_coords = {
-            "retrato": [self.var_pos_x.get(), self.var_pos_y.get()],
-            "paisagem": [700, 450]
+            "retrato": [self.var_pos_x.get(), self.var_pos_y.get(), self.var_tamanho.get()],
+            "paisagem": [700, 450, 110]
         }
         self.modo_atual = "retrato"
 
@@ -302,9 +302,9 @@ class AppMaster:
         lbl_ft.pack(side="bottom", pady=5)
 
     def restaurar_padrao(self):
-        # Define padrões
-        self.cache_coords["retrato"] = [480, 730]
-        self.cache_coords["paisagem"] = [730, 480]
+        # Define padrões [X, Y, Size]
+        self.cache_coords["retrato"] = [480, 730, 110]
+        self.cache_coords["paisagem"] = [730, 480, 110]
         
         self.var_tamanho.set(110)
         
@@ -314,6 +314,7 @@ class AppMaster:
             coords = self.cache_coords[mode]
             self.var_pos_x.set(coords[0])
             self.var_pos_y.set(coords[1])
+            if len(coords) > 2: self.var_tamanho.set(coords[2])
             
         self._atualizar_preview()
         messagebox.showinfo("Configuração", "As coordenadas foram resetadas para o padrão.")
@@ -323,13 +324,21 @@ class AppMaster:
         if novo_modo == self.modo_atual: 
             return
 
-        # 1. Salva estado do modo ANTERIOR antes de trocar
-        self.cache_coords[self.modo_atual] = [self.var_pos_x.get(), self.var_pos_y.get()]
+        # 1. Salva estado do modo ANTERIOR (X, Y, Tam)
+        self.cache_coords[self.modo_atual] = [self.var_pos_x.get(), self.var_pos_y.get(), self.var_tamanho.get()]
         
         # 2. Carrega estado do NOVO modo
-        coords = self.cache_coords.get(novo_modo, [480, 730])
+        # Fallback robusto se não tiver tamanho salvo ainda
+        default_coords = [480, 730, 110] if novo_modo == "retrato" else [730, 480, 110]
+        coords = self.cache_coords.get(novo_modo, default_coords)
+        
         self.var_pos_x.set(coords[0])
         self.var_pos_y.set(coords[1])
+        # Se tiver tamanho salvo (index 2), carrega. Se não, mantém ou usa padrão.
+        if len(coords) > 2:
+            self.var_tamanho.set(coords[2])
+        else:
+            self.var_tamanho.set(110)
         
         # 3. Atualiza ponteiro de estado
         self.modo_atual = novo_modo
@@ -368,8 +377,8 @@ class AppMaster:
         if new_x != curr_x: self.var_pos_x.set(new_x)
         if new_y != curr_y: self.var_pos_y.set(new_y)
         
-        # SALVA NO CACHE (Modo Atual)
-        self.cache_coords[orientacao] = [new_x, new_y]
+        # SALVA NO CACHE (Modo Atual) - Agora com tamanho
+        self.cache_coords[orientacao] = [new_x, new_y, tam_pdf]
         
         # --- VISUALIZAÇÃO ---
         padding = 20
@@ -426,10 +435,9 @@ class AppMaster:
         dados = {
             "nome_carimbo": self.var_carimbo.get(),
             "caminho_pdf": self.var_pdf.get(),
-            "tamanho": self.var_tamanho.get(),
             "inicio": self.var_inicio.get(),
             "pular_capa": self.var_pular_capa.get(),
-            "cache_coords": self.cache_coords.copy() # Copia segura COMPLETA (retrato e paisagem)
+            "cache_coords": self.cache_coords.copy() # Copia segura COMPLETA [X, Y, Tam]
         }
         
         if not dados["caminho_pdf"]:
@@ -447,12 +455,10 @@ class AppMaster:
             arquivo_img = nome_selecionado.replace(" ", "_") + ".png"
             path_img = os.path.join(PASTA_CARIMBOS, arquivo_img)
             
-            # Gera imagem se não existir
             if not os.path.exists(path_img): self.gerador.gerar(nome_selecionado)
 
             reader = PdfReader(dados["caminho_pdf"])
             writer = PdfWriter()
-            tam = dados["tamanho"]
             start_num = dados["inicio"]
             delta = 1 if dados["pular_capa"] else 0
             
@@ -464,17 +470,19 @@ class AppMaster:
                     writer.add_page(page)
                     continue
                 
-                # Dimensões REAIS da página
                 pg_width = float(page.mediabox.width)
                 pg_height = float(page.mediabox.height)
-                
-                # LÓGICA HÍBRIDA: Se largura > altura, é PAISAGEM
                 is_landscape = pg_width > pg_height
                 
+                # SELEÇÃO DINÂMICA (X, Y, TAM)
                 if is_landscape:
-                    x_f, y_f = coords_paisagem[0], coords_paisagem[1]
+                    coords = coords_paisagem
                 else:
-                    x_f, y_f = coords_retrato[0], coords_retrato[1]
+                    coords = coords_retrato
+                
+                x_f, y_f = coords[0], coords[1]
+                # Pega tamanho do cache (index 2) ou padrão 110
+                tam = coords[2] if len(coords) > 2 else 110
                 
                 num_pag = start_num + i - delta
                 
@@ -514,10 +522,9 @@ class AppMaster:
         # CAPTURA DE DADOS NA MAIN THREAD
         dados = {
             "nome_carimbo": self.var_carimbo.get(),
-            "tamanho": self.var_tamanho.get(),
             "inicio": self.var_inicio.get(),
             "qtd": self.var_qtd_paginas_branco.get(),
-            "coords": self.cache_coords["retrato"] # Força retrato
+            "coords": self.cache_coords["retrato"] # Força retrato [X, Y, Tam]
         }
         
         threading.Thread(target=self._thread_branco, args=(file_path, dados), daemon=True).start()
@@ -532,10 +539,10 @@ class AppMaster:
             if not os.path.exists(path_img): self.gerador.gerar(nome_selecionado)
 
             c = canvas.Canvas(output_path, pagesize=A4)
-            tam = dados["tamanho"]
             
-            # Config Retrato Fixa
-            x_f, y_f = dados["coords"][0], dados["coords"][1]
+            coords = dados["coords"]
+            x_f, y_f = coords[0], coords[1]
+            tam = coords[2] if len(coords) > 2 else 110
             
             start_num = dados["inicio"]
             qtd = dados["qtd"]
