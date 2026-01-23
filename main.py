@@ -103,12 +103,14 @@ class GeradorCarimbos:
 class AppMaster:
     def __init__(self, root):
         self.root = root
-        self.root.title("Carimbador Pro - v10.0")
+        self.root.title("Carimbador Automático Municipal")
         self.root.geometry("680x800")
         
         # Ícone se existir
-        # try: self.root.iconbitmap(os.path.join(BASE_DIR, 'icone.ico'))
-        # except: pass
+        try: 
+            if os.path.exists(os.path.join(BASE_DIR, 'icone.ico')):
+                self.root.iconbitmap(os.path.join(BASE_DIR, 'icone.ico'))
+        except: pass
         
         self.gerador = GeradorCarimbos()
         self.config = self.carregar_config()
@@ -298,7 +300,9 @@ class AppMaster:
         self.root.after(100, self._atualizar_preview)
         
         # Footer
-        lbl_ft = ttk.Label(self.root, text="Desenvolvido por Matheus Lôbo  |  v10.0", font=("Helvetica", 8), foreground="#999")
+        import webbrowser
+        lbl_ft = ttk.Label(self.root, text="© Matheus Lôbo  |  www.matheuslobo.com  |  versão 2.1.12", font=("Helvetica", 8), foreground="#999", cursor="hand2")
+        lbl_ft.bind("<Button-1>", lambda e: webbrowser.open("https://matheuslobo.com"))
         lbl_ft.pack(side="bottom", pady=5)
 
     def restaurar_padrao(self):
