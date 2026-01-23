@@ -126,6 +126,13 @@ class AppMaster:
         self.var_pos_y = tk.IntVar(value=self.config.get("pos_y", 730))
         self.var_tamanho = tk.IntVar(value=self.config.get("tamanho", 110))
 
+        # Cache para guardar coordenadas separadas
+        self.cache_coords = {
+            "retrato": [self.var_pos_x.get(), self.var_pos_y.get()],
+            "paisagem": [700, 450]
+        }
+        self.modo_atual = "retrato"
+
         self._montar_layout()
         self.alternar_modo_posicao()
 
@@ -145,9 +152,10 @@ class AppMaster:
             print(f"Erro config: {e}")
 
     def alternar_modo_posicao(self):
-        estado = "normal" if self.var_ajuste_manual.get() else "disabled"
-        self.spin_x.config(state=estado)
-        self.spin_y.config(state=estado)
+        # No novo layout interativo, os controles estão sempre visíveis.
+        # O Checkbox 'Usar coordenadas manuais' apenas define se o backend
+        # deve ignorar a lógica antiga de cantos predefinidos.
+        pass
 
     def _montar_layout(self):
         # Container Principal
@@ -221,56 +229,170 @@ class AppMaster:
         self.btn_run_blank.pack(pady=40, ipady=5)
         self.lbl_st_blank = ttk.Label(f_branco, text="Pronto.", foreground="gray", font=("Helvetica", 9)); self.lbl_st_blank.pack()
 
-        # === ABA 3 (CONFIG) ===
-        f_pos = ttk.Labelframe(f_conf, text="Posição do Carimbo", padding=15)
-        f_pos.pack(fill="both", expand=True)
+        # === ABA 3 (CONFIGURAÇÃO INTERATIVA) ===
+        f_conf.columnconfigure(0, weight=1)
+        
+        # Container Principal Scrollável? Não, vamos simplificar o layout para caber.
+        # Melhor estratégia: Empacotar "Nova Prefeitura" primeiro no fundo, depois os outros no topo.
+        
+        # 3. Adicionar Prefeitura (Botando no bottom para garantir visibilidade)
+        f_add = ttk.Frame(f_conf, padding=10)
+        f_add.pack(side="bottom", fill="x", pady=10)
+        
+        ttk.Label(f_add, text="Nova Prefeitura:", font=("Helvetica", 10, "bold")).pack(anchor="w")
+        f_in = ttk.Frame(f_add)
+        f_in.pack(fill="x", pady=5)
+        
+        self.entry_add = ttk.Entry(f_in, font=("Helvetica", 11))
+        self.entry_add.pack(side="left", fill="x", expand=True, padx=(0, 10))
+        ttk.Button(f_in, text="CRIAR CARIMBO", command=self.add_prefeitura_inline, bootstyle="warning").pack(side="left")
 
-        ttk.Label(f_pos, text="Clique na posição desejada (folha A4):", font=("Helvetica", 9, "bold")).pack(pady=5)
+        # 1. Área de Preview (Esquerda) e Controles (Direita)
+        f_preview = ttk.Labelframe(f_conf, text="Visualização", padding=10, bootstyle="info")
+        f_preview.pack(side="top", fill="x", pady=(0, 5))
         
-        # Simulador Visual
-        canvas_papel = tk.Canvas(f_pos, bg="white", highlightthickness=1, width=150, height=210) # Canvas puro para desenhar
-        canvas_papel.pack(pady=10)
+        # Container que segura Canvas e Toggle lado a lado para economizar altura
+        f_top_row = ttk.Frame(f_preview)
+        f_top_row.pack(fill="x")
         
-        # Pseudo-radiobuttons visuais
-        # Para simplificar com ttkbootstrap, usaremos Radiobuttons normais posicionados
-        # Truque: frame transparente ou place dentro do canvas
-        
-        fr_botoes = ttk.Frame(f_pos)
-        fr_botoes.pack(pady=10)
-        
-        # 'toolbutton-outline' faz eles parecerem botões de alternância
-        ttk.Radiobutton(fr_botoes, text="↖ Sup. Esq.", variable=self.var_pos_canto, value="sup_esq", bootstyle="toolbutton-outline").grid(row=0, column=0, padx=5, pady=5)
-        ttk.Radiobutton(fr_botoes, text="Sup. Dir. ↗", variable=self.var_pos_canto, value="sup_dir", bootstyle="toolbutton-outline").grid(row=0, column=1, padx=5, pady=5)
-        ttk.Radiobutton(fr_botoes, text="↙ Inf. Esq.", variable=self.var_pos_canto, value="inf_esq", bootstyle="toolbutton-outline").grid(row=1, column=0, padx=5, pady=5)
-        ttk.Radiobutton(fr_botoes, text="Inf. Dir. ↘", variable=self.var_pos_canto, value="inf_dir", bootstyle="toolbutton-outline").grid(row=1, column=1, padx=5, pady=5)
+        # Toggle Retrato/Paisagem (lado esquerdo)
+        f_tog = ttk.Frame(f_top_row)
+        f_tog.pack(side="top", pady=(0, 5)) 
+        self.var_orientacao = tk.StringVar(value="retrato")
+        ttk.Radiobutton(f_tog, text="Retrato", variable=self.var_orientacao, value="retrato", command=self._mudanca_orientacao, bootstyle="toolbutton-outline-secondary").pack(side="left", padx=5)
+        ttk.Radiobutton(f_tog, text="Paisagem", variable=self.var_orientacao, value="paisagem", command=self._mudanca_orientacao, bootstyle="toolbutton-outline-secondary").pack(side="left", padx=5)
 
-        ttk.Separator(f_pos, orient="horizontal").pack(fill="x", pady=15)
-        
-        ttk.Checkbutton(f_pos, text="Modo Manual (Coordenadas Exatas)", variable=self.var_ajuste_manual, command=self.alternar_modo_posicao, bootstyle="round-toggle").pack(anchor="w")
-        
-        f_man = ttk.Frame(f_pos); f_man.pack(pady=10, fill="x")
-        ttk.Label(f_man, text="X:").pack(side="left")
-        self.spin_x = ttk.Spinbox(f_man, textvariable=self.var_pos_x, from_=0, to=600, width=8); self.spin_x.pack(side="left", padx=5)
-        ttk.Label(f_man, text="Y:").pack(side="left", padx=(10,0))
-        self.spin_y = ttk.Spinbox(f_man, textvariable=self.var_pos_y, from_=0, to=850, width=8); self.spin_y.pack(side="left", padx=5)
-        
-        f_tam = ttk.Frame(f_pos); f_tam.pack(pady=5, fill="x")
-        ttk.Label(f_tam, text="Tamanho (pts):").pack(side="left")
-        ttk.Spinbox(f_tam, textvariable=self.var_tamanho, from_=50, to=300, width=8).pack(side="left", padx=5)
+        # Canvas Real
+        self.cv_width = 300
+        self.cv_height = 260 # Reduzindo um pouco a altura
+        f_cv_container = ttk.Frame(f_preview) # Wrapper para centralizar
+        f_cv_container.pack()
+        self.canvas = tk.Canvas(f_cv_container, width=self.cv_width, height=self.cv_height, bg="#f0f0f0", highlightthickness=0)
+        self.canvas.pack()
 
-        # Adicionar Prefeitura
-        f_add = ttk.Labelframe(f_conf, text="Nova Prefeitura", padding=15, bootstyle="warning")
-        f_add.pack(fill="x", pady=20)
+        # 2. Controles Deslizantes
+        f_ctrl = ttk.Labelframe(f_conf, text="Ajuste Fino", padding=10)
+        f_ctrl.pack(side="top", fill="x", pady=5)
         
-        self.entry_add = ttk.Entry(f_add)
-        self.entry_add.pack(side="left", fill="x", expand=True, padx=(0,10))
-        ttk.Button(f_add, text="Criar", command=self.add_prefeitura_inline, bootstyle="warning").pack(side="left")
+        # Slider X
+        ttk.Label(f_ctrl, text="Posição Horizontal (X):").pack(anchor="w")
+        self.scale_x = ttk.Scale(f_ctrl, variable=self.var_pos_x, from_=0, to=600, command=lambda v: self._atualizar_preview())
+        self.scale_x.pack(fill="x", pady=(0, 5))
+        
+        # Slider Y
+        ttk.Label(f_ctrl, text="Posição Vertical (Y):").pack(anchor="w")
+        self.scale_y = ttk.Scale(f_ctrl, variable=self.var_pos_y, from_=0, to=850, command=lambda v: self._atualizar_preview())
+        self.scale_y.pack(fill="x", pady=(0, 5))
+        
+        # Slider Tamanho
+        ttk.Label(f_ctrl, text="Tamanho do Carimbo:").pack(anchor="w")
+        self.scale_tam = ttk.Scale(f_ctrl, variable=self.var_tamanho, from_=50, to=300, command=lambda v: self._atualizar_preview())
+        self.scale_tam.pack(fill="x", pady=(0, 5))
+        
+        # Botão Reset
+        ttk.Button(f_ctrl, text="Restaurar Padrão (Sup. Direito)", command=self.restaurar_padrao, bootstyle="secondary-outline", width=30).pack(pady=10)
 
         self.atualizar_lista()
         
+        # Inicializa o preview
+        self.root.after(100, self._atualizar_preview)
+        
         # Footer
         lbl_ft = ttk.Label(self.root, text="Desenvolvido por Matheus Lôbo  |  v10.0", font=("Helvetica", 8), foreground="#999")
-        lbl_ft.pack(side="bottom", pady=10)
+        lbl_ft.pack(side="bottom", pady=5)
+
+    def restaurar_padrao(self):
+        # Define padrões
+        self.cache_coords["retrato"] = [480, 730]
+        self.cache_coords["paisagem"] = [730, 480]
+        
+        self.var_tamanho.set(110)
+        
+        # Força recarregamento do modo atual
+        mode = self.modo_atual
+        if mode in self.cache_coords:
+            coords = self.cache_coords[mode]
+            self.var_pos_x.set(coords[0])
+            self.var_pos_y.set(coords[1])
+            
+        self._atualizar_preview()
+        messagebox.showinfo("Configuração", "As coordenadas foram resetadas para o padrão.")
+
+    def _mudanca_orientacao(self):
+        novo_modo = self.var_orientacao.get()
+        if novo_modo == self.modo_atual: 
+            return
+
+        # 1. Salva estado do modo ANTERIOR antes de trocar
+        self.cache_coords[self.modo_atual] = [self.var_pos_x.get(), self.var_pos_y.get()]
+        
+        # 2. Carrega estado do NOVO modo
+        coords = self.cache_coords.get(novo_modo, [480, 730])
+        self.var_pos_x.set(coords[0])
+        self.var_pos_y.set(coords[1])
+        
+        # 3. Atualiza ponteiro de estado
+        self.modo_atual = novo_modo
+        
+        # 4. Atualiza visual
+        self._atualizar_preview()
+
+    def _atualizar_preview(self, event=None):
+        self.canvas.delete("all")
+        
+        # Dimensões base A4 (pontos)
+        a4_w, a4_h = 595, 842
+        
+        # Usa modo_atual para consistência lógica
+        orientacao = self.modo_atual
+        
+        # Define orientação visual
+        img_w, img_h = (a4_w, a4_h) if orientacao == "retrato" else (a4_h, a4_w)
+        
+        # Obtém tamanho atual do carimbo
+        tam_pdf = self.var_tamanho.get()
+        
+        # --- LÓGICA DE RESTRIÇÃO ---
+        limit_x = max(0, img_w - tam_pdf)
+        limit_y = max(0, img_h - tam_pdf)
+        
+        self.scale_x.config(to=limit_x)
+        self.scale_y.config(to=limit_y)
+        
+        curr_x = self.var_pos_x.get()
+        curr_y = self.var_pos_y.get()
+        
+        new_x = min(curr_x, limit_x)
+        new_y = min(curr_y, limit_y)
+        
+        if new_x != curr_x: self.var_pos_x.set(new_x)
+        if new_y != curr_y: self.var_pos_y.set(new_y)
+        
+        # SALVA NO CACHE (Modo Atual)
+        self.cache_coords[orientacao] = [new_x, new_y]
+        
+        # --- VISUALIZAÇÃO ---
+        padding = 20
+        scale = min((self.cv_width - padding*2) / img_w, (self.cv_height - padding*2) / img_h)
+        
+        draw_w = img_w * scale
+        draw_h = img_h * scale
+        
+        off_x = (self.cv_width - draw_w) / 2
+        off_y = (self.cv_height - draw_h) / 2
+        
+        self.canvas.create_rectangle(off_x+3, off_y+3, off_x+draw_w+3, off_y+draw_h+3, fill="#ccc", outline="")
+        self.canvas.create_rectangle(off_x, off_y, off_x+draw_w, off_y+draw_h, fill="white", outline="#999")
+        
+        screen_h = tam_pdf * scale
+        screen_base_y = (off_y + draw_h) - (new_y * scale)
+        screen_top_y = screen_base_y - screen_h
+        screen_left_x = off_x + (new_x * scale)
+        
+        self.canvas.create_oval(screen_left_x, screen_top_y, screen_left_x+screen_h, screen_base_y, outline="red", width=2, fill="#ffcccc")
+        
+        self.canvas.create_text(self.cv_width/2, 10, text=f"[{orientacao.upper()}] Pos: ({int(new_x)}, {int(new_y)}) | Tam: {int(tam_pdf)}", font=("Arial", 8), fill="#555")
+
 
     def atualizar_lista(self):
         if not os.path.exists(PASTA_CARIMBOS): os.makedirs(PASTA_CARIMBOS)
@@ -296,56 +418,24 @@ class AppMaster:
         else:
             messagebox.showwarning("Aviso", "Digite o nome da cidade.")
 
-    # --- MÉTODO AUXILIAR PARA CÁLCULO DINÂMICO ---
-    def _calcular_posicao_dinamica(self, pg_width, pg_height, tam_carimbo, config_manual, config_canto, config_pos):
-        """
-        Calcula X e Y baseado no tamanho REAL da página atual.
-        Isso resolve problemas de Landscape (Paisagem) e folhas fora do padrão A4.
-        """
-        # Desempacota configs para thread-safety
-        manual_ativo, manual_x, manual_y = config_manual, config_pos[0], config_pos[1]
-        
-        if manual_ativo:
-            return manual_x, manual_y
-        
-        canto = config_canto
-        margem = 20
-        
-        if canto == "sup_esq":
-            x = margem
-            y = pg_height - tam_carimbo - margem
-        elif canto == "sup_dir":
-            x = pg_width - tam_carimbo - margem
-            y = pg_height - tam_carimbo - margem
-        elif canto == "inf_esq":
-            x = margem
-            y = margem
-        elif canto == "inf_dir":
-            x = pg_width - tam_carimbo - margem
-            y = margem
-        else:
-            # Padrão
-            x = pg_width - tam_carimbo - 20
-            y = pg_height - tam_carimbo - 20
-            
-        return x, y
-
-    # --- PROCESSAMENTO PDF EXISTENTE (CORRIGIDO PARA LANDSCAPE) ---
+    # --- PROCESSAMENTO PDF EXISTENTE (HÍBRIDO INTELIGENTE) ---
     def processar_pdf_existente(self):
         self.salvar_config()
         
-        # CAPTURA DE DADOS NA MAIN THREAD (PREVINE ERROS TÉCNICOS)
+        # CAPTURA DE DADOS NA MAIN THREAD
         dados = {
             "nome_carimbo": self.var_carimbo.get(),
             "caminho_pdf": self.var_pdf.get(),
             "tamanho": self.var_tamanho.get(),
             "inicio": self.var_inicio.get(),
             "pular_capa": self.var_pular_capa.get(),
-            "config_manual": self.var_ajuste_manual.get(),
-            "config_canto": self.var_pos_canto.get(),
-            "config_pos": (self.var_pos_x.get(), self.var_pos_y.get())
+            "cache_coords": self.cache_coords.copy() # Copia segura COMPLETA (retrato e paisagem)
         }
         
+        if not dados["caminho_pdf"]:
+            messagebox.showwarning("Aviso", "Selecione um arquivo PDF.")
+            return
+
         threading.Thread(target=self._thread_existente, args=(dados,), daemon=True).start()
 
     def _thread_existente(self, dados):
@@ -357,7 +447,7 @@ class AppMaster:
             arquivo_img = nome_selecionado.replace(" ", "_") + ".png"
             path_img = os.path.join(PASTA_CARIMBOS, arquivo_img)
             
-            # Gera imagem se não existir (thread-safe pois é file system)
+            # Gera imagem se não existir
             if not os.path.exists(path_img): self.gerador.gerar(nome_selecionado)
 
             reader = PdfReader(dados["caminho_pdf"])
@@ -365,21 +455,26 @@ class AppMaster:
             tam = dados["tamanho"]
             start_num = dados["inicio"]
             delta = 1 if dados["pular_capa"] else 0
+            
+            coords_retrato = dados["cache_coords"]["retrato"]
+            coords_paisagem = dados["cache_coords"]["paisagem"]
 
             for i, page in enumerate(reader.pages):
                 if dados["pular_capa"] and i == 0:
                     writer.add_page(page)
                     continue
                 
-                # Dimensões REAIS
+                # Dimensões REAIS da página
                 pg_width = float(page.mediabox.width)
                 pg_height = float(page.mediabox.height)
                 
-                # Calcula X e Y com dados passados
-                x_f, y_f = self._calcular_posicao_dinamica(
-                    pg_width, pg_height, tam, 
-                    dados["config_manual"], dados["config_canto"], dados["config_pos"]
-                )
+                # LÓGICA HÍBRIDA: Se largura > altura, é PAISAGEM
+                is_landscape = pg_width > pg_height
+                
+                if is_landscape:
+                    x_f, y_f = coords_paisagem[0], coords_paisagem[1]
+                else:
+                    x_f, y_f = coords_retrato[0], coords_retrato[1]
                 
                 num_pag = start_num + i - delta
                 
@@ -422,12 +517,49 @@ class AppMaster:
             "tamanho": self.var_tamanho.get(),
             "inicio": self.var_inicio.get(),
             "qtd": self.var_qtd_paginas_branco.get(),
-            "config_manual": self.var_ajuste_manual.get(),
-            "config_canto": self.var_pos_canto.get(),
-            "config_pos": (self.var_pos_x.get(), self.var_pos_y.get())
+            "coords": self.cache_coords["retrato"] # Força retrato
         }
         
         threading.Thread(target=self._thread_branco, args=(file_path, dados), daemon=True).start()
+
+    def _thread_branco(self, output_path, dados):
+        self.root.after(0, lambda: self.btn_run_blank.config(state="disabled"))
+        self.root.after(0, lambda: self.lbl_st_blank.config(text="Gerando...", bootstyle="primary"))
+        
+        try:
+            nome_selecionado = dados["nome_carimbo"]
+            path_img = os.path.join(PASTA_CARIMBOS, nome_selecionado.replace(" ", "_") + ".png")
+            if not os.path.exists(path_img): self.gerador.gerar(nome_selecionado)
+
+            c = canvas.Canvas(output_path, pagesize=A4)
+            tam = dados["tamanho"]
+            
+            # Config Retrato Fixa
+            x_f, y_f = dados["coords"][0], dados["coords"][1]
+            
+            start_num = dados["inicio"]
+            qtd = dados["qtd"]
+
+            for i in range(qtd):
+                num_pag = start_num + i
+                c.drawImage(path_img, x_f, y_f, width=tam, height=tam, mask='auto')
+                c.setFont("Helvetica-Bold", 11)
+                c.drawCentredString(x_f + (tam/2), y_f + (tam*0.45), str(num_pag))
+                c.showPage()
+            
+            try:
+                c.save()
+            except PermissionError:
+                raise Exception(f"O arquivo de destino está aberto.\nFeche: {output_path}")
+
+            proximo = start_num + qtd
+            self.root.after(0, lambda: self._finalizar_blank(True, f"Gerado com sucesso!", proximo))
+            
+        except Exception as e:
+            err_msg = str(e)
+            self.root.after(0, lambda: self._finalizar_blank(False, err_msg))
+
+    # --- MÉTODOS VISUAIS AUXILIARES ---
 
     def _thread_branco(self, output_path, dados):
         self.root.after(0, lambda: self.btn_run_blank.config(state="disabled"))
