@@ -268,16 +268,18 @@ class AppMaster:
             messagebox.showwarning("Aviso", "Digite o nome da cidade.")
 
     # --- MÉTODO AUXILIAR PARA CÁLCULO DINÂMICO ---
-    def _calcular_posicao_dinamica(self, pg_width, pg_height, tam_carimbo):
+    def _calcular_posicao_dinamica(self, pg_width, pg_height, tam_carimbo, config_manual, config_canto, config_pos):
         """
         Calcula X e Y baseado no tamanho REAL da página atual.
         Isso resolve problemas de Landscape (Paisagem) e folhas fora do padrão A4.
         """
-        if self.var_ajuste_manual.get():
-            # Se for manual, respeita o input do usuário (cuidado: pode sair da tela se o papel for pequeno)
-            return self.var_pos_x.get(), self.var_pos_y.get()
+        # Desempacota configs para thread-safety
+        manual_ativo, manual_x, manual_y = config_manual, config_pos[0], config_pos[1]
         
-        canto = self.var_pos_canto.get()
+        if manual_ativo:
+            return manual_x, manual_y
+        
+        canto = config_canto
         margem = 20
         
         if canto == "sup_esq":
@@ -302,41 +304,57 @@ class AppMaster:
     # --- PROCESSAMENTO PDF EXISTENTE (CORRIGIDO PARA LANDSCAPE) ---
     def processar_pdf_existente(self):
         self.salvar_config()
-        threading.Thread(target=self._thread_existente, daemon=True).start()
+        
+        # CAPTURA DE DADOS NA MAIN THREAD (PREVINE ERROS TÉCNICOS)
+        dados = {
+            "nome_carimbo": self.var_carimbo.get(),
+            "caminho_pdf": self.var_pdf.get(),
+            "tamanho": self.var_tamanho.get(),
+            "inicio": self.var_inicio.get(),
+            "pular_capa": self.var_pular_capa.get(),
+            "config_manual": self.var_ajuste_manual.get(),
+            "config_canto": self.var_pos_canto.get(),
+            "config_pos": (self.var_pos_x.get(), self.var_pos_y.get())
+        }
+        
+        threading.Thread(target=self._thread_existente, args=(dados,), daemon=True).start()
 
-    def _thread_existente(self):
+    def _thread_existente(self, dados):
         self.root.after(0, self._iniciar_gui_processamento)
         try:
-            nome_selecionado = self.var_carimbo.get()
+            nome_selecionado = dados["nome_carimbo"]
             if not nome_selecionado: raise Exception("Selecione um carimbo.")
             
             arquivo_img = nome_selecionado.replace(" ", "_") + ".png"
             path_img = os.path.join(PASTA_CARIMBOS, arquivo_img)
             
+            # Gera imagem se não existir (thread-safe pois é file system)
             if not os.path.exists(path_img): self.gerador.gerar(nome_selecionado)
 
-            reader = PdfReader(self.var_pdf.get())
+            reader = PdfReader(dados["caminho_pdf"])
             writer = PdfWriter()
-            tam = self.var_tamanho.get()
-            start_num = self.var_inicio.get()
-            delta = 1 if self.var_pular_capa.get() else 0
+            tam = dados["tamanho"]
+            start_num = dados["inicio"]
+            delta = 1 if dados["pular_capa"] else 0
 
             for i, page in enumerate(reader.pages):
-                if self.var_pular_capa.get() and i == 0:
+                if dados["pular_capa"] and i == 0:
                     writer.add_page(page)
                     continue
                 
-                # Obtém as dimensões REAIS desta página (resolve o problema Landscape)
+                # Dimensões REAIS
                 pg_width = float(page.mediabox.width)
                 pg_height = float(page.mediabox.height)
                 
-                # Calcula X e Y dinamicamente para ESTA página
-                x_f, y_f = self._calcular_posicao_dinamica(pg_width, pg_height, tam)
+                # Calcula X e Y com dados passados
+                x_f, y_f = self._calcular_posicao_dinamica(
+                    pg_width, pg_height, tam, 
+                    dados["config_manual"], dados["config_canto"], dados["config_pos"]
+                )
                 
                 num_pag = start_num + i - delta
                 
                 packet = io.BytesIO()
-                # Canvas deve ter o tamanho da página original
                 can = canvas.Canvas(packet, pagesize=(pg_width, pg_height))
                 
                 can.drawImage(path_img, x_f, y_f, width=tam, height=tam, mask='auto')
@@ -345,13 +363,16 @@ class AppMaster:
                 can.save()
                 packet.seek(0)
                 
-                # Merge
                 overlay_pdf = PdfReader(packet)
                 page.merge_page(overlay_pdf.pages[0])
                 writer.add_page(page)
 
-            out = self.var_pdf.get().replace(".pdf", "_CARIMBADO.pdf")
-            with open(out, "wb") as f: writer.write(f)
+            out = dados["caminho_pdf"].replace(".pdf", "_CARIMBADO.pdf")
+            
+            try:
+                with open(out, "wb") as f: writer.write(f)
+            except PermissionError:
+                raise Exception(f"O arquivo de destino está aberto.\nFeche: {out}")
             
             proximo = start_num + len(reader.pages) - delta
             self.root.after(0, lambda: self._finalizar_gui(True, f"Salvo em: {out}", proximo))
@@ -364,26 +385,40 @@ class AppMaster:
         self.salvar_config()
         file_path = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF", "*.pdf")])
         if not file_path: return
-        threading.Thread(target=self._thread_branco, args=(file_path,), daemon=True).start()
+        
+        # CAPTURA DE DADOS NA MAIN THREAD
+        dados = {
+            "nome_carimbo": self.var_carimbo.get(),
+            "tamanho": self.var_tamanho.get(),
+            "inicio": self.var_inicio.get(),
+            "qtd": self.var_qtd_paginas_branco.get(),
+            "config_manual": self.var_ajuste_manual.get(),
+            "config_canto": self.var_pos_canto.get(),
+            "config_pos": (self.var_pos_x.get(), self.var_pos_y.get())
+        }
+        
+        threading.Thread(target=self._thread_branco, args=(file_path, dados), daemon=True).start()
 
-    def _thread_branco(self, output_path):
+    def _thread_branco(self, output_path, dados):
         self.root.after(0, lambda: self.btn_run_blank.config(state="disabled"))
         self.root.after(0, lambda: self.lbl_st_blank.config(text="Gerando...", foreground="blue"))
         
         try:
-            nome_selecionado = self.var_carimbo.get()
+            nome_selecionado = dados["nome_carimbo"]
             path_img = os.path.join(PASTA_CARIMBOS, nome_selecionado.replace(" ", "_") + ".png")
             if not os.path.exists(path_img): self.gerador.gerar(nome_selecionado)
 
             c = canvas.Canvas(output_path, pagesize=A4)
-            tam = self.var_tamanho.get()
+            tam = dados["tamanho"]
             
-            # Para folha em branco, usamos A4 padrão (595x842)
-            # Calculamos a posição padrão baseada nisso
-            x_f, y_f = self._calcular_posicao_dinamica(595, 842, tam)
+            # Cálculo de Posição (A4 = 595x842)
+            x_f, y_f = self._calcular_posicao_dinamica(
+                595, 842, tam,
+                dados["config_manual"], dados["config_canto"], dados["config_pos"]
+            )
             
-            start_num = self.var_inicio.get()
-            qtd = self.var_qtd_paginas_branco.get()
+            start_num = dados["inicio"]
+            qtd = dados["qtd"]
 
             for i in range(qtd):
                 num_pag = start_num + i
@@ -392,7 +427,11 @@ class AppMaster:
                 c.drawCentredString(x_f + (tam/2), y_f + (tam*0.45), str(num_pag))
                 c.showPage()
             
-            c.save()
+            try:
+                c.save()
+            except PermissionError:
+                raise Exception(f"O arquivo de destino está aberto.\nFeche: {output_path}")
+
             proximo = start_num + qtd
             self.root.after(0, lambda: self._finalizar_blank(True, f"Gerado com sucesso!", proximo))
             
