@@ -134,6 +134,9 @@ class AppMaster:
             "paisagem": [700, 450, 110]
         }
         self.modo_atual = "retrato"
+        
+        # Variável aba Mesclar
+        self.arquivos_mesclar = []
 
         self._montar_layout()
 
@@ -163,13 +166,17 @@ class AppMaster:
         
         f_exec = ttk.Frame(nb, padding=20)
         f_branco = ttk.Frame(nb, padding=20)
+        f_mesclar = ttk.Frame(nb, padding=20) # NOVA ABA
         f_conf = ttk.Frame(nb, padding=20)
         
         nb.add(f_exec, text="  Processar PDF  ")
         nb.add(f_branco, text="  Gerar Folhas  ")
+        nb.add(f_mesclar, text="  Mesclar PDFs  ") # INSERÇÃO
         nb.add(f_conf, text="  Configurações  ")
 
-        # === ABA 1 ===
+        # ==========================================
+        # === ABA 1: PROCESSAR PDF ===
+        # ==========================================
         ttk.Label(f_exec, text="Selecione o arquivo PDF:", font=("Helvetica", 10)).pack(anchor="w")
         
         f_file = ttk.Frame(f_exec)
@@ -189,7 +196,6 @@ class AppMaster:
         ttk.Label(f_opts, text="Iniciar em:").pack(side="left")
         ttk.Spinbox(f_opts, textvariable=self.var_inicio, from_=1, to=999999, width=8).pack(side="left", padx=10)
         ttk.Checkbutton(f_opts, text="Pular 1ª Pág.", variable=self.var_pular_capa, bootstyle="round-toggle").pack(side="left", padx=10)
-        # Nova opção de carimbo limpo
         ttk.Checkbutton(f_opts, text="Apenas Carimbo (Sem nº)", variable=self.var_sem_numero, bootstyle="round-toggle").pack(side="left", padx=10)
 
         self.btn_run = ttk.Button(f_exec, text="CARIMBAR AGORA", command=self.processar_pdf_existente, bootstyle="success", width=25)
@@ -199,7 +205,9 @@ class AppMaster:
         self.lbl_st = ttk.Label(f_exec, text="Aguardando...", foreground="gray", font=("Helvetica", 9))
         self.lbl_st.pack(pady=5)
 
-        # === ABA 2 ===
+        # ==========================================
+        # === ABA 2: GERAR FOLHAS ===
+        # ==========================================
         ttk.Label(f_branco, text="Gerar folhas em branco numeradas com carimbo.", font=("Helvetica", 10)).pack(anchor="w", pady=(0, 15))
         
         ttk.Label(f_branco, text="Prefeitura:").pack(anchor="w")
@@ -208,17 +216,14 @@ class AppMaster:
         
         f_grid = ttk.Frame(f_branco); f_grid.pack(fill="x", pady=15)
         
-        # Coluna 1
         f_c1 = ttk.Frame(f_grid); f_c1.pack(side="left", fill="x", expand=True, padx=(0, 10))
         ttk.Label(f_c1, text="Quantidade:").pack(anchor="w")
         ttk.Spinbox(f_c1, textvariable=self.var_qtd_paginas_branco, from_=1, to=1000).pack(fill="x")
         
-        # Coluna 2
         f_c2 = ttk.Frame(f_grid); f_c2.pack(side="left", fill="x", expand=True, padx=(0, 10))
         ttk.Label(f_c2, text="Início da Numeração:").pack(anchor="w")
         ttk.Spinbox(f_c2, textvariable=self.var_inicio, from_=1, to=999999).pack(fill="x")
 
-        # Coluna 3 (Nova)
         f_c3 = ttk.Frame(f_grid); f_c3.pack(side="left", fill="x", expand=True)
         ttk.Checkbutton(f_c3, text="Apenas Carimbo", variable=self.var_sem_numero, bootstyle="round-toggle").pack(anchor="w", pady=(20,0))
 
@@ -226,7 +231,57 @@ class AppMaster:
         self.btn_run_blank.pack(pady=40, ipady=5)
         self.lbl_st_blank = ttk.Label(f_branco, text="Pronto.", foreground="gray", font=("Helvetica", 9)); self.lbl_st_blank.pack()
 
-        # === ABA 3 ===
+        # ==========================================
+        # === ABA 3: MESCLAR PDFs (NOVA) ===
+        # ==========================================
+        ttk.Label(f_mesclar, text="Adicione arquivos PDF e defina a ordem de união.", font=("Helvetica", 10)).pack(anchor="w", pady=(0, 15))
+        
+        ttk.Button(f_mesclar, text="+ Adicionar PDFs", command=self.adicionar_arquivos_mesclar, bootstyle="secondary").pack(anchor="w", pady=(0, 10))
+        
+        # Container para a Lista e os Controles Laterais
+        f_lista_container = ttk.Frame(f_mesclar)
+        f_lista_container.pack(fill="both", expand=True, pady=(5, 5))
+        
+        # Scrollbar e Listbox
+        scroll = ttk.Scrollbar(f_lista_container, bootstyle="round")
+        scroll.pack(side="right", fill="y")
+        
+        # Listbox modernizado (Estilo Flat)
+        self.listbox_mesclar = tk.Listbox(
+            f_lista_container, 
+            yscrollcommand=scroll.set, 
+            font=("Helvetica", 11),
+            bg="#ffffff",
+            fg="#333333",
+            selectbackground="#2FA4E7",   # Azul primário do tema Litera
+            selectforeground="#ffffff",
+            activestyle="none",           # Remove o contorno pontilhado feio no item clicado
+            relief="flat",                # Remove o efeito 3D antigo do Tkinter
+            highlightthickness=1,         # Cria uma borda fina e sólida
+            highlightbackground="#dee2e6",# Cor da borda neutra (padrão Bootstrap)
+            highlightcolor="#2FA4E7",     # Cor da borda quando a lista está em foco
+            selectborderwidth=0
+        )
+        self.listbox_mesclar.pack(side="left", fill="both", expand=True, padx=(0, 10))
+        scroll.config(command=self.listbox_mesclar.yview)
+
+        # Botões de Ação da Lista (embaixo)
+        f_lista_ctrls = ttk.Frame(f_mesclar)
+        f_lista_ctrls.pack(fill="x", pady=10)
+        
+        ttk.Button(f_lista_ctrls, text="⬆️ Subir", command=self.mover_cima_mesclar, bootstyle="info-outline", width=12).pack(side="left", padx=(0, 5))
+        ttk.Button(f_lista_ctrls, text="⬇️ Descer", command=self.mover_baixo_mesclar, bootstyle="info-outline", width=12).pack(side="left", padx=(0, 5))
+        ttk.Button(f_lista_ctrls, text="🗑️ Remover", command=self.remover_arquivo_mesclar, bootstyle="danger-outline", width=12).pack(side="right")
+
+        self.btn_run_mesclar = ttk.Button(f_mesclar, text="MESCLAR E SALVAR", command=self.processar_mesclar, bootstyle="success", width=25)
+        self.btn_run_mesclar.pack(pady=30, ipady=5)
+        
+        self.lbl_st_mesclar = ttk.Label(f_mesclar, text="Aguardando...", foreground="gray", font=("Helvetica", 9))
+        self.lbl_st_mesclar.pack()
+
+        # ==========================================
+        # === ABA 4: CONFIGURAÇÕES ===
+        # ==========================================
         f_conf.columnconfigure(0, weight=1)
         
         f_add = ttk.Frame(f_conf, padding=10)
@@ -279,10 +334,104 @@ class AppMaster:
         self.atualizar_lista()
         self.root.after(100, self._atualizar_preview)
         
-        lbl_ft = ttk.Label(self.root, text="© Matheus Lôbo  |  www.matheuslobo.com  |  versão 3.0.1", font=("Helvetica", 8), foreground="#999", cursor="hand2")
+        lbl_ft = ttk.Label(self.root, text="© Matheus Lôbo  |  www.matheuslobo.com  |  versão 3.1.0", font=("Helvetica", 8), foreground="#999", cursor="hand2")
         lbl_ft.bind("<Button-1>", lambda e: webbrowser.open("https://matheuslobo.com"))
         lbl_ft.pack(side="bottom", pady=5)
 
+    # ==========================================
+    # === FUNÇÕES DA ABA MESCLAR ============
+    # ==========================================
+    def adicionar_arquivos_mesclar(self):
+        arquivos = filedialog.askopenfilenames(filetypes=[("Arquivos PDF", "*.pdf")])
+        for arq in arquivos:
+            if arq not in self.arquivos_mesclar:
+                self.arquivos_mesclar.append(arq)
+                # Exibe apenas o nome do arquivo para ficar limpo
+                self.listbox_mesclar.insert(tk.END, os.path.basename(arq))
+
+    def mover_cima_mesclar(self):
+        sel = self.listbox_mesclar.curselection()
+        if not sel: return
+        idx = sel[0]
+        if idx > 0:
+            # Troca no array
+            self.arquivos_mesclar[idx], self.arquivos_mesclar[idx-1] = self.arquivos_mesclar[idx-1], self.arquivos_mesclar[idx]
+            # Troca na Interface
+            texto = self.listbox_mesclar.get(idx)
+            self.listbox_mesclar.delete(idx)
+            self.listbox_mesclar.insert(idx-1, texto)
+            self.listbox_mesclar.selection_set(idx-1)
+
+    def mover_baixo_mesclar(self):
+        sel = self.listbox_mesclar.curselection()
+        if not sel: return
+        idx = sel[0]
+        if idx < len(self.arquivos_mesclar) - 1:
+            self.arquivos_mesclar[idx], self.arquivos_mesclar[idx+1] = self.arquivos_mesclar[idx+1], self.arquivos_mesclar[idx]
+            texto = self.listbox_mesclar.get(idx)
+            self.listbox_mesclar.delete(idx)
+            self.listbox_mesclar.insert(idx+1, texto)
+            self.listbox_mesclar.selection_set(idx+1)
+
+    def remover_arquivo_mesclar(self):
+        sel = self.listbox_mesclar.curselection()
+        if not sel: return
+        idx = sel[0]
+        self.arquivos_mesclar.pop(idx)
+        self.listbox_mesclar.delete(idx)
+        if self.arquivos_mesclar:
+            # Seleciona o anterior ou o próximo para manter fluidez
+            new_idx = idx if idx < len(self.arquivos_mesclar) else idx - 1
+            self.listbox_mesclar.selection_set(new_idx)
+
+    def processar_mesclar(self):
+        if not self.arquivos_mesclar:
+            messagebox.showwarning("Aviso", "Adicione pelo menos um PDF para mesclar.")
+            return
+            
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".pdf", 
+            filetypes=[("PDF", "*.pdf")],
+            title="Salvar PDF Mesclado Como..."
+        )
+        if not file_path: return
+        
+        self.btn_run_mesclar.config(state="disabled")
+        self.lbl_st_mesclar.config(text="Mesclando PDFs...", bootstyle="primary")
+        
+        threading.Thread(target=self._thread_mesclar, args=(file_path,), daemon=True).start()
+
+    def _thread_mesclar(self, output_path):
+        try:
+            merger = PdfWriter()
+            for path in self.arquivos_mesclar:
+                merger.append(path)
+            
+            with open(output_path, "wb") as f:
+                merger.write(f)
+                
+            self.root.after(0, lambda: self._finalizar_mesclar(True, f"PDF mesclado salvo com sucesso!"))
+        except PermissionError:
+            err = f"O arquivo de destino está aberto.\nFeche: {output_path}"
+            self.root.after(0, lambda: self._finalizar_mesclar(False, err))
+        except Exception as e:
+            self.root.after(0, lambda e=e: self._finalizar_mesclar(False, str(e)))
+
+    def _finalizar_mesclar(self, sucesso, msg):
+        self.btn_run_mesclar.config(state="normal")
+        if sucesso:
+            self.lbl_st_mesclar.config(text="Concluído.", bootstyle="success")
+            messagebox.showinfo("Sucesso", msg)
+            # Limpa a lista após concluir (Opcional, mas recomendado)
+            self.arquivos_mesclar.clear()
+            self.listbox_mesclar.delete(0, tk.END)
+        else:
+            self.lbl_st_mesclar.config(text="Erro.", bootstyle="danger")
+            messagebox.showerror("Erro", msg)
+
+    # ==========================================
+    # === FUNÇÕES DE CONFIGURAÇÃO E PREVIEW ===
+    # ==========================================
     def restaurar_padrao(self):
         self.cache_coords["retrato"] = [480, 730, 110]
         self.cache_coords["paisagem"] = [730, 480, 110]
@@ -348,7 +497,6 @@ class AppMaster:
 
     def atualizar_lista(self):
         if not os.path.exists(PASTA_CARIMBOS): os.makedirs(PASTA_CARIMBOS)
-        # Mantém filtro apenas por precaução caso existam resquícios da versão anterior
         arquivos = sorted([f for f in os.listdir(PASTA_CARIMBOS) if f.lower().endswith('.png') and not f.endswith('_vazio.png')])
         nomes_limpos = [f.upper().replace(".PNG", "").replace("_", " ") for f in arquivos]
         self.cb_c['values'] = nomes_limpos
@@ -361,7 +509,6 @@ class AppMaster:
         nome = self.entry_add.get().strip()
         if nome:
             try:
-                # Agora gera apenas um tipo de imagem
                 nome_criado = self.gerador.gerar(nome)
                 self.atualizar_lista()
                 self.entry_add.delete(0, tk.END)
@@ -372,7 +519,9 @@ class AppMaster:
         else:
             messagebox.showwarning("Aviso", "Digite o nome da cidade.")
 
-    # --- PROCESSAMENTO PDF EXISTENTE ---
+    # ==========================================
+    # === PROCESSAMENTO DE CARIMBO (PDF/BRANCO) ==
+    # ==========================================
     def processar_pdf_existente(self):
         self.salvar_config()
         dados = {
@@ -433,7 +582,6 @@ class AppMaster:
                 
                 can.drawImage(path_img, x_f, y_f, width=tam, height=tam, mask='auto')
                 
-                # Se for carimbo limpo, ele NÃO vai executar o código abaixo, deixando em branco para escrita manual
                 if com_num:
                     can.setFont("Helvetica-Bold", 11)
                     can.drawCentredString(x_f + (tam/2), y_f + (tam*0.45), str(num_pag))
