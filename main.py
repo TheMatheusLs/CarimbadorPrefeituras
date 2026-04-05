@@ -14,9 +14,9 @@ from pypdf import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 
-from docx2pdf import convert
+import win32com.client
 try:
-    import pythoncom # Necessário para rodar o Word em background (Threads) no Windows
+    import pythoncom 
 except ImportError:
     pythoncom = None
 
@@ -32,6 +32,7 @@ def obter_diretorio_base():
 BASE_DIR = obter_diretorio_base()
 ARQUIVO_CONFIG = os.path.join(BASE_DIR, "config.json")
 PASTA_CARIMBOS = os.path.join(BASE_DIR, "Carimbos Prefeituras")
+VERSION = "4.0.1"
 
 class GeradorCarimbos:
     def __init__(self):
@@ -384,7 +385,7 @@ class AppMaster:
         self.atualizar_lista()
         self.root.after(100, self._atualizar_preview)
         
-        lbl_ft = ttk.Label(self.root, text="© Matheus Lôbo  |  www.matheuslobo.com  |  versão 4.0.0", font=("Helvetica", 8), foreground="#999", cursor="hand2")
+        lbl_ft = ttk.Label(self.root, text=f"© Matheus Lôbo  |  www.matheuslobo.com  |  versão {VERSION}", font=("Helvetica", 8), foreground="#999", cursor="hand2")
         lbl_ft.bind("<Button-1>", lambda e: webbrowser.open("https://matheuslobo.com"))
         lbl_ft.pack(side="bottom", pady=5)
 
@@ -437,30 +438,43 @@ class AppMaster:
 
     def _thread_converter_word(self, pasta_destino):
         try:
-            # Inicializa suporte COM para Threads no Windows (crucial para o win32com/docx2pdf funcionar)
+            # Inicializa suporte COM para Threads no Windows
             if pythoncom is not None:
                 pythoncom.CoInitialize()
             
-            total = len(self.arquivos_word)
-            for i, path in enumerate(self.arquivos_word):
-                nome_base = os.path.splitext(os.path.basename(path))[0]
-                saida_pdf = os.path.join(pasta_destino, f"{nome_base}.pdf")
-                
-                # Atualiza a interface
-                self.root.after(0, lambda n=i+1, t=total: self.lbl_st_word.config(text=f"Convertendo {n}/{t}... Aguarde."))
-                
-                # Executa a conversão
-                convert(path, saida_pdf)
-                
-            if pythoncom is not None:
-                pythoncom.CoUninitialize()
-                
-            self.root.after(0, lambda: self._finalizar_conversao_word(True, f"{total} arquivo(s) convertido(s) com sucesso!\n\nSalvos em:\n{pasta_destino}"))
+            # Força a criação de uma NOVA instância isolada do Word (DispatchEx)
+            word = win32com.client.DispatchEx("Word.Application")
+            word.Visible = False
+            word.DisplayAlerts = False # Evita que popups do Word travem o script
             
+            total = len(self.arquivos_word)
+            
+            try:
+                for i, path in enumerate(self.arquivos_word):
+                    # O Word exige caminhos ABSOLUTOS, senão o método .Open falha
+                    abs_path_in = os.path.abspath(path)
+                    nome_base = os.path.splitext(os.path.basename(path))[0]
+                    saida_pdf = os.path.abspath(os.path.join(pasta_destino, f"{nome_base}.pdf"))
+                    
+                    # Atualiza a interface
+                    self.root.after(0, lambda n=i+1, t=total: self.lbl_st_word.config(text=f"Convertendo {n}/{t}... Aguarde."))
+                    
+                    # Abre o Word, salva como PDF (formato 17) e fecha o documento
+                    doc = word.Documents.Open(abs_path_in, ReadOnly=True)
+                    doc.SaveAs(saida_pdf, FileFormat=17)
+                    doc.Close(0) # 0 = wdDoNotSaveChanges (Não salva alterações no doc original)
+                    
+                self.root.after(0, lambda: self._finalizar_conversao_word(True, f"{total} arquivo(s) convertido(s) com sucesso!\n\nSalvos em:\n{pasta_destino}"))
+            
+            finally:
+                # O bloco finally garante que o Word será fechado da memória MESMO SE der erro
+                word.Quit()
+                
         except Exception as e:
+            self.root.after(0, lambda e=e: self._finalizar_conversao_word(False, f"Erro na conversão.\nVerifique se o MS Word está instalado ou se o arquivo já está aberto.\n\nDetalhes: {str(e)}"))
+        finally:
             if pythoncom is not None:
                 pythoncom.CoUninitialize()
-            self.root.after(0, lambda e=e: self._finalizar_conversao_word(False, f"Erro na conversão.\nVerifique se o MS Word está instalado.\n\nDetalhes: {str(e)}"))
 
     def _finalizar_conversao_word(self, sucesso, msg):
         self.btn_run_word.config(state="normal")
