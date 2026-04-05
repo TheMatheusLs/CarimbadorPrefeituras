@@ -1,0 +1,25 @@
+[project]
+name = "carimbadorprefeituras"
+version = "3.0.0"
+description = "Carimbador Automático para Prefeituras"
+authors = [
+    {name = "Matheus Lôbo",email = "matheusls@live.com"}
+]
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "ttkbootstrap (>=1.20.2,<2.0.0)",
+    "pillow (>=12.2.0,<13.0.0)",
+    "pypdf (>=6.9.2,<7.0.0)",
+    "reportlab (>=4.4.10,<5.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[dependency-groups]
+dev = [
+    "pyinstaller (>=6.19.0,<7.0.0)"
+]

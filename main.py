@@ -24,9 +24,8 @@ def obter_diretorio_base():
 
 # --- CONSTANTES ---
 BASE_DIR = obter_diretorio_base()
-ARQUIVO_CONFIG = os.path.join(BASE_DIR, "config_v10.json")
+ARQUIVO_CONFIG = os.path.join(BASE_DIR, "config.json")
 PASTA_CARIMBOS = os.path.join(BASE_DIR, "Carimbos Prefeituras")
-# Nota: LARGURA_A4 e ALTURA_A4 são usados apenas como padrão/fallback agora
 
 class GeradorCarimbos:
     def __init__(self):
@@ -42,7 +41,7 @@ class GeradorCarimbos:
             self.font_path_bold = "arial.ttf"
             self.font_path_normal = "arial.ttf"
 
-    def gerar(self, nome_cidade):
+    def gerar(self, nome_cidade, com_numero=True):
         nome_limpo = nome_cidade.strip().upper()
         img = Image.new("RGBA", (self.tamanho_canvas, self.tamanho_canvas), (255, 255, 255, 0))
         draw = ImageDraw.Draw(img)
@@ -58,22 +57,25 @@ class GeradorCarimbos:
         
         self._desenhar_texto_curvo(img, texto, fonte)
         
-        # Miolo
-        try: font_miolo = ImageFont.truetype(self.font_path_normal, 40)
-        except: font_miolo = ImageFont.load_default()
+        # Só desenha o miolo (linha e texto 'Folha') se a numeração estiver ativada
+        if com_numero:
+            try: font_miolo = ImageFont.truetype(self.font_path_normal, 40)
+            except: font_miolo = ImageFont.load_default()
 
-        # Ajuste vertical
-        y_linha = self.centro + 60 
-        
-        # Desenha Linha Centralizada
-        draw.line([(350, y_linha), (850, y_linha)], fill="black", width=6)
-        
-        # Texto "Folha"
-        draw.text((self.centro, y_linha + 15), "Folha", font=font_miolo, fill="black", anchor="mt")
+            # Ajuste vertical
+            y_linha = self.centro + 60 
+            
+            # Desenha Linha Centralizada
+            draw.line([(350, y_linha), (850, y_linha)], fill="black", width=6)
+            
+            # Texto "Folha"
+            draw.text((self.centro, y_linha + 15), "Folha", font=font_miolo, fill="black", anchor="mt")
         
         if not os.path.exists(PASTA_CARIMBOS): os.makedirs(PASTA_CARIMBOS)
         
-        nome_arquivo = f"{nome_limpo.replace(' ', '_')}.png"
+        # Cria um nome diferente para não sobrescrever os carimbos normais
+        sufixo = "" if com_numero else "_vazio"
+        nome_arquivo = f"{nome_limpo.replace(' ', '_')}{sufixo}.png"
         path = os.path.join(PASTA_CARIMBOS, nome_arquivo)
         img.save(path)
         return nome_limpo
@@ -104,7 +106,7 @@ class AppMaster:
     def __init__(self, root):
         self.root = root
         self.root.title("Carimbador Automático Municipal")
-        self.root.geometry("680x800")
+        self.root.geometry("780x940")
         
         # Ícone se existir
         try: 
@@ -121,6 +123,7 @@ class AppMaster:
         self.var_inicio = tk.IntVar(value=1)
         self.var_pular_capa = tk.BooleanVar(value=False)
         self.var_qtd_paginas_branco = tk.IntVar(value=1)
+        self.var_sem_numero = tk.BooleanVar(value=False) # Nova variável para carimbo limpo
         
         self.var_pos_canto = tk.StringVar(value=self.config.get("canto", "sup_dir"))
         self.var_ajuste_manual = tk.BooleanVar(value=self.config.get("manual", False))
@@ -154,20 +157,14 @@ class AppMaster:
             print(f"Erro config: {e}")
 
     def alternar_modo_posicao(self):
-        # No novo layout interativo, os controles estão sempre visíveis.
-        # O Checkbox 'Usar coordenadas manuais' apenas define se o backend
-        # deve ignorar a lógica antiga de cantos predefinidos.
         pass
 
     def _montar_layout(self):
-        # Container Principal
         container = ttk.Frame(self.root, padding=20)
         container.pack(fill='both', expand=True)
 
-        # Cabeçalho Simples
         ttk.Label(container, text="Carimbador Automático", font=("Helvetica", 18, "bold"), bootstyle="primary").pack(pady=(0, 20))
 
-        # Notebook (Abas Modernas)
         nb = ttk.Notebook(container, bootstyle="primary")
         nb.pack(fill='both', expand=True)
         
@@ -197,10 +194,11 @@ class AppMaster:
         f_opts.pack(fill="x", pady=20)
         
         ttk.Label(f_opts, text="Iniciar em:").pack(side="left")
-        ttk.Spinbox(f_opts, textvariable=self.var_inicio, from_=1, to=999999, width=10).pack(side="left", padx=10)
-        ttk.Checkbutton(f_opts, text="Pular 1ª Página (Capa)", variable=self.var_pular_capa, bootstyle="round-toggle").pack(side="left", padx=20)
+        ttk.Spinbox(f_opts, textvariable=self.var_inicio, from_=1, to=999999, width=8).pack(side="left", padx=10)
+        ttk.Checkbutton(f_opts, text="Pular 1ª Pág.", variable=self.var_pular_capa, bootstyle="round-toggle").pack(side="left", padx=10)
+        # Nova opção de carimbo limpo
+        ttk.Checkbutton(f_opts, text="Apenas Carimbo (Sem nº)", variable=self.var_sem_numero, bootstyle="round-toggle").pack(side="left", padx=10)
 
-        # Botão de Ação destaque
         self.btn_run = ttk.Button(f_exec, text="CARIMBAR AGORA", command=self.processar_pdf_existente, bootstyle="success", width=25)
         self.btn_run.pack(pady=30, ipady=5)
         
@@ -223,21 +221,21 @@ class AppMaster:
         ttk.Spinbox(f_c1, textvariable=self.var_qtd_paginas_branco, from_=1, to=1000).pack(fill="x")
         
         # Coluna 2
-        f_c2 = ttk.Frame(f_grid); f_c2.pack(side="left", fill="x", expand=True)
+        f_c2 = ttk.Frame(f_grid); f_c2.pack(side="left", fill="x", expand=True, padx=(0, 10))
         ttk.Label(f_c2, text="Início da Numeração:").pack(anchor="w")
         ttk.Spinbox(f_c2, textvariable=self.var_inicio, from_=1, to=999999).pack(fill="x")
+
+        # Coluna 3 (Nova)
+        f_c3 = ttk.Frame(f_grid); f_c3.pack(side="left", fill="x", expand=True)
+        ttk.Checkbutton(f_c3, text="Apenas Carimbo", variable=self.var_sem_numero, bootstyle="round-toggle").pack(anchor="w", pady=(20,0))
 
         self.btn_run_blank = ttk.Button(f_branco, text="GERAR PDF EM BRANCO", command=self.processar_em_branco, bootstyle="primary", width=25)
         self.btn_run_blank.pack(pady=40, ipady=5)
         self.lbl_st_blank = ttk.Label(f_branco, text="Pronto.", foreground="gray", font=("Helvetica", 9)); self.lbl_st_blank.pack()
 
-        # === ABA 3 (CONFIGURAÇÃO INTERATIVA) ===
+        # === ABA 3 ===
         f_conf.columnconfigure(0, weight=1)
         
-        # Container Principal Scrollável? Não, vamos simplificar o layout para caber.
-        # Melhor estratégia: Empacotar "Nova Prefeitura" primeiro no fundo, depois os outros no topo.
-        
-        # 3. Adicionar Prefeitura (Botando no bottom para garantir visibilidade)
         f_add = ttk.Frame(f_conf, padding=10)
         f_add.pack(side="bottom", fill="x", pady=10)
         
@@ -249,148 +247,98 @@ class AppMaster:
         self.entry_add.pack(side="left", fill="x", expand=True, padx=(0, 10))
         ttk.Button(f_in, text="CRIAR CARIMBO", command=self.add_prefeitura_inline, bootstyle="warning").pack(side="left")
 
-        # 1. Área de Preview (Esquerda) e Controles (Direita)
         f_preview = ttk.Labelframe(f_conf, text="Visualização", padding=10, bootstyle="info")
         f_preview.pack(side="top", fill="x", pady=(0, 5))
         
-        # Container que segura Canvas e Toggle lado a lado para economizar altura
         f_top_row = ttk.Frame(f_preview)
         f_top_row.pack(fill="x")
         
-        # Toggle Retrato/Paisagem (lado esquerdo)
         f_tog = ttk.Frame(f_top_row)
         f_tog.pack(side="top", pady=(0, 5)) 
         self.var_orientacao = tk.StringVar(value="retrato")
         ttk.Radiobutton(f_tog, text="Retrato", variable=self.var_orientacao, value="retrato", command=self._mudanca_orientacao, bootstyle="toolbutton-outline-secondary").pack(side="left", padx=5)
         ttk.Radiobutton(f_tog, text="Paisagem", variable=self.var_orientacao, value="paisagem", command=self._mudanca_orientacao, bootstyle="toolbutton-outline-secondary").pack(side="left", padx=5)
 
-        # Canvas Real
         self.cv_width = 300
         self.cv_height = 220
-        f_cv_container = ttk.Frame(f_preview) # Wrapper para centralizar
+        f_cv_container = ttk.Frame(f_preview)
         f_cv_container.pack()
         self.canvas = tk.Canvas(f_cv_container, width=self.cv_width, height=self.cv_height, bg="#f0f0f0", highlightthickness=0)
         self.canvas.pack()
 
-        # 2. Controles Deslizantes
         f_ctrl = ttk.Labelframe(f_conf, text="Ajuste Fino", padding=10)
         f_ctrl.pack(side="top", fill="x", pady=5)
         
-        # Slider X
         ttk.Label(f_ctrl, text="Posição Horizontal (X):").pack(anchor="w")
         self.scale_x = ttk.Scale(f_ctrl, variable=self.var_pos_x, from_=0, to=600, command=lambda v: self._atualizar_preview())
         self.scale_x.pack(fill="x", pady=(0, 5))
         
-        # Slider Y
         ttk.Label(f_ctrl, text="Posição Vertical (Y):").pack(anchor="w")
         self.scale_y = ttk.Scale(f_ctrl, variable=self.var_pos_y, from_=0, to=850, command=lambda v: self._atualizar_preview())
         self.scale_y.pack(fill="x", pady=(0, 5))
         
-        # Slider Tamanho
         ttk.Label(f_ctrl, text="Tamanho do Carimbo:").pack(anchor="w")
         self.scale_tam = ttk.Scale(f_ctrl, variable=self.var_tamanho, from_=50, to=300, command=lambda v: self._atualizar_preview())
         self.scale_tam.pack(fill="x", pady=(0, 5))
         
-        # Botão Reset
         ttk.Button(f_ctrl, text="Restaurar Padrão (Sup. Direito)", command=self.restaurar_padrao, bootstyle="secondary-outline", width=30).pack(pady=10)
 
         self.atualizar_lista()
-        
-        # Inicializa o preview
         self.root.after(100, self._atualizar_preview)
         
-        # Footer
-        import webbrowser
-        lbl_ft = ttk.Label(self.root, text="© Matheus Lôbo  |  www.matheuslobo.com  |  versão 2.1.12", font=("Helvetica", 8), foreground="#999", cursor="hand2")
+        lbl_ft = ttk.Label(self.root, text="© Matheus Lôbo  |  www.matheuslobo.com  |  versão 3.0.0", font=("Helvetica", 8), foreground="#999", cursor="hand2")
         lbl_ft.bind("<Button-1>", lambda e: webbrowser.open("https://matheuslobo.com"))
         lbl_ft.pack(side="bottom", pady=5)
 
     def restaurar_padrao(self):
-        # Define padrões [X, Y, Size]
         self.cache_coords["retrato"] = [480, 730, 110]
         self.cache_coords["paisagem"] = [730, 480, 110]
-        
         self.var_tamanho.set(110)
-        
-        # Força recarregamento do modo atual
         mode = self.modo_atual
         if mode in self.cache_coords:
             coords = self.cache_coords[mode]
             self.var_pos_x.set(coords[0])
             self.var_pos_y.set(coords[1])
             if len(coords) > 2: self.var_tamanho.set(coords[2])
-            
         self._atualizar_preview()
         messagebox.showinfo("Configuração", "As coordenadas foram resetadas para o padrão.")
 
     def _mudanca_orientacao(self):
         novo_modo = self.var_orientacao.get()
-        if novo_modo == self.modo_atual: 
-            return
-
-        # 1. Salva estado do modo ANTERIOR (X, Y, Tam)
+        if novo_modo == self.modo_atual: return
         self.cache_coords[self.modo_atual] = [self.var_pos_x.get(), self.var_pos_y.get(), self.var_tamanho.get()]
-        
-        # 2. Carrega estado do NOVO modo
-        # Fallback robusto se não tiver tamanho salvo ainda
         default_coords = [480, 730, 110] if novo_modo == "retrato" else [730, 480, 110]
         coords = self.cache_coords.get(novo_modo, default_coords)
-        
         self.var_pos_x.set(coords[0])
         self.var_pos_y.set(coords[1])
-        # Se tiver tamanho salvo (index 2), carrega. Se não, mantém ou usa padrão.
-        if len(coords) > 2:
-            self.var_tamanho.set(coords[2])
-        else:
-            self.var_tamanho.set(110)
-        
-        # 3. Atualiza ponteiro de estado
+        if len(coords) > 2: self.var_tamanho.set(coords[2])
+        else: self.var_tamanho.set(110)
         self.modo_atual = novo_modo
-        
-        # 4. Atualiza visual
         self._atualizar_preview()
 
     def _atualizar_preview(self, event=None):
         self.canvas.delete("all")
-        
-        # Dimensões base A4 (pontos)
         a4_w, a4_h = 595, 842
-        
-        # Usa modo_atual para consistência lógica
         orientacao = self.modo_atual
-        
-        # Define orientação visual
         img_w, img_h = (a4_w, a4_h) if orientacao == "retrato" else (a4_h, a4_w)
-        
-        # Obtém tamanho atual do carimbo
         tam_pdf = self.var_tamanho.get()
-        
-        # --- LÓGICA DE RESTRIÇÃO ---
         limit_x = max(0, img_w - tam_pdf)
         limit_y = max(0, img_h - tam_pdf)
-        
         self.scale_x.config(to=limit_x)
         self.scale_y.config(to=limit_y)
-        
         curr_x = self.var_pos_x.get()
         curr_y = self.var_pos_y.get()
-        
         new_x = min(curr_x, limit_x)
         new_y = min(curr_y, limit_y)
-        
         if new_x != curr_x: self.var_pos_x.set(new_x)
         if new_y != curr_y: self.var_pos_y.set(new_y)
         
-        # SALVA NO CACHE (Modo Atual) - Agora com tamanho
         self.cache_coords[orientacao] = [new_x, new_y, tam_pdf]
         
-        # --- VISUALIZAÇÃO ---
         padding = 20
         scale = min((self.cv_width - padding*2) / img_w, (self.cv_height - padding*2) / img_h)
-        
         draw_w = img_w * scale
         draw_h = img_h * scale
-        
         off_x = (self.cv_width - draw_w) / 2
         off_y = (self.cv_height - draw_h) / 2
         
@@ -403,13 +351,12 @@ class AppMaster:
         screen_left_x = off_x + (new_x * scale)
         
         self.canvas.create_oval(screen_left_x, screen_top_y, screen_left_x+screen_h, screen_base_y, outline="red", width=2, fill="#ffcccc")
-        
         self.canvas.create_text(self.cv_width/2, 10, text=f"[{orientacao.upper()}] Pos: ({int(new_x)}, {int(new_y)}) | Tam: {int(tam_pdf)}", font=("Arial", 8), fill="#555")
-
 
     def atualizar_lista(self):
         if not os.path.exists(PASTA_CARIMBOS): os.makedirs(PASTA_CARIMBOS)
-        arquivos = sorted([f for f in os.listdir(PASTA_CARIMBOS) if f.lower().endswith('.png')])
+        # Filtra para não exibir os sufixos _vazio na lista para o usuário
+        arquivos = sorted([f for f in os.listdir(PASTA_CARIMBOS) if f.lower().endswith('.png') and not f.endswith('_vazio.png')])
         nomes_limpos = [f.upper().replace(".PNG", "").replace("_", " ") for f in arquivos]
         self.cb_c['values'] = nomes_limpos
         self.cb_c2['values'] = nomes_limpos
@@ -421,7 +368,9 @@ class AppMaster:
         nome = self.entry_add.get().strip()
         if nome:
             try:
-                nome_criado = self.gerador.gerar(nome)
+                # Gera as duas versões para manter cache completo
+                nome_criado = self.gerador.gerar(nome, com_numero=True)
+                self.gerador.gerar(nome, com_numero=False)
                 self.atualizar_lista()
                 self.entry_add.delete(0, tk.END)
                 self.var_carimbo.set(nome_criado) 
@@ -431,17 +380,16 @@ class AppMaster:
         else:
             messagebox.showwarning("Aviso", "Digite o nome da cidade.")
 
-    # --- PROCESSAMENTO PDF EXISTENTE (HÍBRIDO INTELIGENTE) ---
+    # --- PROCESSAMENTO PDF EXISTENTE ---
     def processar_pdf_existente(self):
         self.salvar_config()
-        
-        # CAPTURA DE DADOS NA MAIN THREAD
         dados = {
             "nome_carimbo": self.var_carimbo.get(),
             "caminho_pdf": self.var_pdf.get(),
             "inicio": self.var_inicio.get(),
             "pular_capa": self.var_pular_capa.get(),
-            "cache_coords": self.cache_coords.copy() # Copia segura COMPLETA [X, Y, Tam]
+            "cache_coords": self.cache_coords.copy(),
+            "sem_numero": self.var_sem_numero.get() # Passa a flag
         }
         
         if not dados["caminho_pdf"]:
@@ -456,10 +404,14 @@ class AppMaster:
             nome_selecionado = dados["nome_carimbo"]
             if not nome_selecionado: raise Exception("Selecione um carimbo.")
             
-            arquivo_img = nome_selecionado.replace(" ", "_") + ".png"
+            com_num = not dados["sem_numero"]
+            sufixo = "" if com_num else "_vazio"
+            arquivo_img = nome_selecionado.replace(" ", "_") + sufixo + ".png"
             path_img = os.path.join(PASTA_CARIMBOS, arquivo_img)
             
-            if not os.path.exists(path_img): self.gerador.gerar(nome_selecionado)
+            # Gera na hora caso não exista no cache
+            if not os.path.exists(path_img): 
+                self.gerador.gerar(nome_selecionado, com_numero=com_num)
 
             reader = PdfReader(dados["caminho_pdf"])
             writer = PdfWriter()
@@ -478,24 +430,23 @@ class AppMaster:
                 pg_height = float(page.mediabox.height)
                 is_landscape = pg_width > pg_height
                 
-                # SELEÇÃO DINÂMICA (X, Y, TAM)
-                if is_landscape:
-                    coords = coords_paisagem
-                else:
-                    coords = coords_retrato
+                if is_landscape: coords = coords_paisagem
+                else: coords = coords_retrato
                 
                 x_f, y_f = coords[0], coords[1]
-                # Pega tamanho do cache (index 2) ou padrão 110
                 tam = coords[2] if len(coords) > 2 else 110
-                
                 num_pag = start_num + i - delta
                 
                 packet = io.BytesIO()
                 can = canvas.Canvas(packet, pagesize=(pg_width, pg_height))
                 
                 can.drawImage(path_img, x_f, y_f, width=tam, height=tam, mask='auto')
-                can.setFont("Helvetica-Bold", 11)
-                can.drawCentredString(x_f + (tam/2), y_f + (tam*0.45), str(num_pag))
+                
+                # Só escreve o texto por cima se não for carimbo limpo
+                if com_num:
+                    can.setFont("Helvetica-Bold", 11)
+                    can.drawCentredString(x_f + (tam/2), y_f + (tam*0.45), str(num_pag))
+                
                 can.save()
                 packet.seek(0)
                 
@@ -504,7 +455,6 @@ class AppMaster:
                 writer.add_page(page)
 
             out = dados["caminho_pdf"].replace(".pdf", "_CARIMBADO.pdf")
-            
             try:
                 with open(out, "wb") as f: writer.write(f)
             except PermissionError:
@@ -514,21 +464,20 @@ class AppMaster:
             self.root.after(0, lambda: self._finalizar_gui(True, f"Salvo em: {out}", proximo))
 
         except Exception as e:
-            err_msg = str(e)
-            self.root.after(0, lambda: self._finalizar_gui(False, err_msg))
+            self.root.after(0, lambda e=e: self._finalizar_gui(False, str(e)))
 
-    # --- PROCESSAMENTO EM BRANCO (MANTÉM A4 FIXO) ---
+    # --- PROCESSAMENTO EM BRANCO (CORRIGIDO) ---
     def processar_em_branco(self):
         self.salvar_config()
         file_path = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF", "*.pdf")])
         if not file_path: return
         
-        # CAPTURA DE DADOS NA MAIN THREAD
         dados = {
             "nome_carimbo": self.var_carimbo.get(),
             "inicio": self.var_inicio.get(),
             "qtd": self.var_qtd_paginas_branco.get(),
-            "coords": self.cache_coords["retrato"] # Força retrato [X, Y, Tam]
+            "coords": self.cache_coords["retrato"],
+            "sem_numero": self.var_sem_numero.get() # Passa a flag
         }
         
         threading.Thread(target=self._thread_branco, args=(file_path, dados), daemon=True).start()
@@ -539,11 +488,16 @@ class AppMaster:
         
         try:
             nome_selecionado = dados["nome_carimbo"]
-            path_img = os.path.join(PASTA_CARIMBOS, nome_selecionado.replace(" ", "_") + ".png")
-            if not os.path.exists(path_img): self.gerador.gerar(nome_selecionado)
+            com_num = not dados["sem_numero"]
+            sufixo = "" if com_num else "_vazio"
+            path_img = os.path.join(PASTA_CARIMBOS, nome_selecionado.replace(" ", "_") + sufixo + ".png")
+            
+            if not os.path.exists(path_img): 
+                self.gerador.gerar(nome_selecionado, com_numero=com_num)
 
             c = canvas.Canvas(output_path, pagesize=A4)
             
+            # Utiliza de forma correta os dados recebidos pelo dicionário
             coords = dados["coords"]
             x_f, y_f = coords[0], coords[1]
             tam = coords[2] if len(coords) > 2 else 110
@@ -554,8 +508,12 @@ class AppMaster:
             for i in range(qtd):
                 num_pag = start_num + i
                 c.drawImage(path_img, x_f, y_f, width=tam, height=tam, mask='auto')
-                c.setFont("Helvetica-Bold", 11)
-                c.drawCentredString(x_f + (tam/2), y_f + (tam*0.45), str(num_pag))
+                
+                # Só escreve o texto por cima se não for carimbo limpo
+                if com_num:
+                    c.setFont("Helvetica-Bold", 11)
+                    c.drawCentredString(x_f + (tam/2), y_f + (tam*0.45), str(num_pag))
+                    
                 c.showPage()
             
             try:
@@ -567,50 +525,7 @@ class AppMaster:
             self.root.after(0, lambda: self._finalizar_blank(True, f"Gerado com sucesso!", proximo))
             
         except Exception as e:
-            err_msg = str(e)
-            self.root.after(0, lambda: self._finalizar_blank(False, err_msg))
-
-    # --- MÉTODOS VISUAIS AUXILIARES ---
-
-    def _thread_branco(self, output_path, dados):
-        self.root.after(0, lambda: self.btn_run_blank.config(state="disabled"))
-        self.root.after(0, lambda: self.lbl_st_blank.config(text="Gerando...", bootstyle="primary"))
-        
-        try:
-            nome_selecionado = dados["nome_carimbo"]
-            path_img = os.path.join(PASTA_CARIMBOS, nome_selecionado.replace(" ", "_") + ".png")
-            if not os.path.exists(path_img): self.gerador.gerar(nome_selecionado)
-
-            c = canvas.Canvas(output_path, pagesize=A4)
-            tam = dados["tamanho"]
-            
-            # Cálculo de Posição (A4 = 595x842)
-            x_f, y_f = self._calcular_posicao_dinamica(
-                595, 842, tam,
-                dados["config_manual"], dados["config_canto"], dados["config_pos"]
-            )
-            
-            start_num = dados["inicio"]
-            qtd = dados["qtd"]
-
-            for i in range(qtd):
-                num_pag = start_num + i
-                c.drawImage(path_img, x_f, y_f, width=tam, height=tam, mask='auto')
-                c.setFont("Helvetica-Bold", 11)
-                c.drawCentredString(x_f + (tam/2), y_f + (tam*0.45), str(num_pag))
-                c.showPage()
-            
-            try:
-                c.save()
-            except PermissionError:
-                raise Exception(f"O arquivo de destino está aberto.\nFeche: {output_path}")
-
-            proximo = start_num + qtd
-            self.root.after(0, lambda: self._finalizar_blank(True, f"Gerado com sucesso!", proximo))
-            
-        except Exception as e:
-            err_msg = str(e)
-            self.root.after(0, lambda: self._finalizar_blank(False, err_msg))
+            self.root.after(0, lambda e=e: self._finalizar_blank(False, str(e)))
 
     # --- MÉTODOS VISUAIS AUXILIARES ---
     def _iniciar_gui_processamento(self):
@@ -642,7 +557,6 @@ class AppMaster:
             messagebox.showerror("Erro", msg)
 
 if __name__ == "__main__":
-    # Inicialização do Tema Moderno "Litera"
     app = ttk.Window(themename="litera")
     AppMaster(app)
     app.mainloop()
