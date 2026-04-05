@@ -14,6 +14,12 @@ from pypdf import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 
+from docx2pdf import convert
+try:
+    import pythoncom # Necessário para rodar o Word em background (Threads) no Windows
+except ImportError:
+    pythoncom = None
+
 # --- FUNÇÃO DE ROBUSTEZ DE CAMINHO ---
 def obter_diretorio_base():
     """Retorna o diretório onde o Executável ou o Script está localizado."""
@@ -137,6 +143,7 @@ class AppMaster:
         
         # Variável aba Mesclar
         self.arquivos_mesclar = []
+        self.arquivos_word = []
 
         self._montar_layout()
 
@@ -166,12 +173,14 @@ class AppMaster:
         
         f_exec = ttk.Frame(nb, padding=20)
         f_branco = ttk.Frame(nb, padding=20)
-        f_mesclar = ttk.Frame(nb, padding=20) # NOVA ABA
+        f_mesclar = ttk.Frame(nb, padding=20) 
+        f_word = ttk.Frame(nb, padding=20)
         f_conf = ttk.Frame(nb, padding=20)
         
         nb.add(f_exec, text="  Processar PDF  ")
         nb.add(f_branco, text="  Gerar Folhas  ")
-        nb.add(f_mesclar, text="  Mesclar PDFs  ") # INSERÇÃO
+        nb.add(f_mesclar, text="  Mesclar PDFs  ")
+        nb.add(f_word, text="  Word para PDF  ")
         nb.add(f_conf, text="  Configurações  ")
 
         # ==========================================
@@ -289,7 +298,39 @@ class AppMaster:
         self.lbl_st_mesclar.pack()
         
         # ==========================================
-        # === ABA 4: CONFIGURAÇÕES ===
+        # === ABA 4: WORD PARA PDF (NOVA) ===
+        # ==========================================
+        ttk.Label(f_word, text="Adicione arquivos Word (.docx, .doc) para convertê-los em PDF.", font=("Helvetica", 10)).pack(anchor="w", pady=(0, 15))
+        ttk.Button(f_word, text="+ Adicionar Docs Word", command=self.adicionar_arquivos_word, bootstyle="secondary").pack(anchor="w", pady=(0, 10))
+        
+        f_lista_container_w = ttk.Frame(f_word)
+        f_lista_container_w.pack(fill="both", expand=True, pady=(10, 10))
+        scroll_w = ttk.Scrollbar(f_lista_container_w, bootstyle="round")
+        scroll_w.pack(side="right", fill="y")
+        
+        self.tree_word = ttk.Treeview(f_lista_container_w, columns=("num", "nome"), show="headings", selectmode="browse", yscrollcommand=scroll_w.set, bootstyle="primary")
+        self.tree_word.heading("num", text="#")
+        self.tree_word.column("num", width=40, anchor="center", stretch=False)
+        self.tree_word.heading("nome", text="Arquivo Word")
+        self.tree_word.column("nome", anchor="w", stretch=True)
+        self.tree_word.pack(side="left", fill="both", expand=True, padx=(0, 10))
+        scroll_w.config(command=self.tree_word.yview)
+
+        self.tree_word.tag_configure("par", background="#f8f9fa")
+        self.tree_word.tag_configure("impar", background="#e9ecef")
+
+        f_lista_ctrls_w = ttk.Frame(f_word)
+        f_lista_ctrls_w.pack(fill="x", pady=10)
+        ttk.Button(f_lista_ctrls_w, text="🗑️ Remover Selecionado", command=self.remover_arquivo_word, bootstyle="danger-outline").pack(side="right")
+        ttk.Button(f_lista_ctrls_w, text="Limpar Lista", command=self.limpar_arquivos_word, bootstyle="warning-outline").pack(side="left")
+
+        self.btn_run_word = ttk.Button(f_word, text="CONVERTER PARA PDF", command=self.processar_conversao_word, bootstyle="success", width=25)
+        self.btn_run_word.pack(pady=30, ipady=5)
+        self.lbl_st_word = ttk.Label(f_word, text="Aguardando...", foreground="gray", font=("Helvetica", 9))
+        self.lbl_st_word.pack()
+        
+        # ==========================================
+        # === ABA 5: CONFIGURAÇÕES ===
         # ==========================================
         f_conf.columnconfigure(0, weight=1)
         
@@ -343,12 +384,96 @@ class AppMaster:
         self.atualizar_lista()
         self.root.after(100, self._atualizar_preview)
         
-        lbl_ft = ttk.Label(self.root, text="© Matheus Lôbo  |  www.matheuslobo.com  |  versão 3.1.0", font=("Helvetica", 8), foreground="#999", cursor="hand2")
+        lbl_ft = ttk.Label(self.root, text="© Matheus Lôbo  |  www.matheuslobo.com  |  versão 4.0.0", font=("Helvetica", 8), foreground="#999", cursor="hand2")
         lbl_ft.bind("<Button-1>", lambda e: webbrowser.open("https://matheuslobo.com"))
         lbl_ft.pack(side="bottom", pady=5)
 
     # ==========================================
-    # === FUNÇÕES DA ABA MESCLAR ============
+    # === FUNÇÕES DA ABA WORD (NOVA) ===
+    # ==========================================
+    def _renderizar_lista_word(self):
+        for item in self.tree_word.get_children():
+            self.tree_word.delete(item)
+            
+        for i, arq in enumerate(self.arquivos_word):
+            tag = "par" if i % 2 == 0 else "impar"
+            nome = os.path.basename(arq)
+            self.tree_word.insert("", "end", iid=str(i), values=(f"{i+1}º", nome), tags=(tag,))
+
+    def adicionar_arquivos_word(self):
+        arquivos = filedialog.askopenfilenames(filetypes=[("Documentos Word", "*.docx *.doc")])
+        mudou = False
+        for arq in arquivos:
+            if arq not in self.arquivos_word:
+                self.arquivos_word.append(arq)
+                mudou = True
+        
+        if mudou: self._renderizar_lista_word()
+
+    def remover_arquivo_word(self):
+        sel = self.tree_word.selection()
+        if not sel: return
+        idx = int(sel[0])
+        self.arquivos_word.pop(idx)
+        self._renderizar_lista_word()
+
+    def limpar_arquivos_word(self):
+        self.arquivos_word.clear()
+        self._renderizar_lista_word()
+
+    def processar_conversao_word(self):
+        if not self.arquivos_word:
+            messagebox.showwarning("Aviso", "Adicione pelo menos um arquivo Word para converter.")
+            return
+            
+        # Como são múltiplos arquivos, pedimos uma PASTA para salvar os PDFs
+        pasta_destino = filedialog.askdirectory(title="Selecione a pasta para salvar os PDFs")
+        if not pasta_destino: return
+        
+        self.btn_run_word.config(state="disabled")
+        self.lbl_st_word.config(text="Iniciando conversão via Microsoft Word...", bootstyle="primary")
+        
+        threading.Thread(target=self._thread_converter_word, args=(pasta_destino,), daemon=True).start()
+
+    def _thread_converter_word(self, pasta_destino):
+        try:
+            # Inicializa suporte COM para Threads no Windows (crucial para o win32com/docx2pdf funcionar)
+            if pythoncom is not None:
+                pythoncom.CoInitialize()
+            
+            total = len(self.arquivos_word)
+            for i, path in enumerate(self.arquivos_word):
+                nome_base = os.path.splitext(os.path.basename(path))[0]
+                saida_pdf = os.path.join(pasta_destino, f"{nome_base}.pdf")
+                
+                # Atualiza a interface
+                self.root.after(0, lambda n=i+1, t=total: self.lbl_st_word.config(text=f"Convertendo {n}/{t}... Aguarde."))
+                
+                # Executa a conversão
+                convert(path, saida_pdf)
+                
+            if pythoncom is not None:
+                pythoncom.CoUninitialize()
+                
+            self.root.after(0, lambda: self._finalizar_conversao_word(True, f"{total} arquivo(s) convertido(s) com sucesso!\n\nSalvos em:\n{pasta_destino}"))
+            
+        except Exception as e:
+            if pythoncom is not None:
+                pythoncom.CoUninitialize()
+            self.root.after(0, lambda e=e: self._finalizar_conversao_word(False, f"Erro na conversão.\nVerifique se o MS Word está instalado.\n\nDetalhes: {str(e)}"))
+
+    def _finalizar_conversao_word(self, sucesso, msg):
+        self.btn_run_word.config(state="normal")
+        if sucesso:
+            self.lbl_st_word.config(text="Conversão concluída.", bootstyle="success")
+            messagebox.showinfo("Sucesso", msg)
+            self.limpar_arquivos_word()
+        else:
+            self.lbl_st_word.config(text="Erro.", bootstyle="danger")
+            messagebox.showerror("Erro", msg)
+
+    # ==========================================
+    # === FUNÇÕES DA ABA MESCLAR ===
     # ==========================================
     def _renderizar_lista_mesclar(self, indice_selecionado=None):
         """Limpa a visualização e recria mantendo a numeração e cores corretas"""
