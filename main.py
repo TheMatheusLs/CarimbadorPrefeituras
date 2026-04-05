@@ -41,7 +41,7 @@ class GeradorCarimbos:
             self.font_path_bold = "arial.ttf"
             self.font_path_normal = "arial.ttf"
 
-    def gerar(self, nome_cidade, com_numero=True):
+    def gerar(self, nome_cidade):
         nome_limpo = nome_cidade.strip().upper()
         img = Image.new("RGBA", (self.tamanho_canvas, self.tamanho_canvas), (255, 255, 255, 0))
         draw = ImageDraw.Draw(img)
@@ -57,25 +57,22 @@ class GeradorCarimbos:
         
         self._desenhar_texto_curvo(img, texto, fonte)
         
-        # Só desenha o miolo (linha e texto 'Folha') se a numeração estiver ativada
-        if com_numero:
-            try: font_miolo = ImageFont.truetype(self.font_path_normal, 40)
-            except: font_miolo = ImageFont.load_default()
+        # Miolo sempre presente (para permitir preenchimento manual)
+        try: font_miolo = ImageFont.truetype(self.font_path_normal, 40)
+        except: font_miolo = ImageFont.load_default()
 
-            # Ajuste vertical
-            y_linha = self.centro + 60 
-            
-            # Desenha Linha Centralizada
-            draw.line([(350, y_linha), (850, y_linha)], fill="black", width=6)
-            
-            # Texto "Folha"
-            draw.text((self.centro, y_linha + 15), "Folha", font=font_miolo, fill="black", anchor="mt")
+        y_linha = self.centro + 60 
+        
+        # Desenha Linha Centralizada
+        draw.line([(350, y_linha), (850, y_linha)], fill="black", width=6)
+        
+        # Texto "Folha"
+        draw.text((self.centro, y_linha + 15), "Folha", font=font_miolo, fill="black", anchor="mt")
         
         if not os.path.exists(PASTA_CARIMBOS): os.makedirs(PASTA_CARIMBOS)
         
-        # Cria um nome diferente para não sobrescrever os carimbos normais
-        sufixo = "" if com_numero else "_vazio"
-        nome_arquivo = f"{nome_limpo.replace(' ', '_')}{sufixo}.png"
+        # Salva o arquivo normal único
+        nome_arquivo = f"{nome_limpo.replace(' ', '_')}.png"
         path = os.path.join(PASTA_CARIMBOS, nome_arquivo)
         img.save(path)
         return nome_limpo
@@ -123,7 +120,7 @@ class AppMaster:
         self.var_inicio = tk.IntVar(value=1)
         self.var_pular_capa = tk.BooleanVar(value=False)
         self.var_qtd_paginas_branco = tk.IntVar(value=1)
-        self.var_sem_numero = tk.BooleanVar(value=False) # Nova variável para carimbo limpo
+        self.var_sem_numero = tk.BooleanVar(value=False) 
         
         self.var_pos_canto = tk.StringVar(value=self.config.get("canto", "sup_dir"))
         self.var_ajuste_manual = tk.BooleanVar(value=self.config.get("manual", False))
@@ -139,7 +136,6 @@ class AppMaster:
         self.modo_atual = "retrato"
 
         self._montar_layout()
-        self.alternar_modo_posicao()
 
     def carregar_config(self):
         if os.path.exists(ARQUIVO_CONFIG):
@@ -155,9 +151,6 @@ class AppMaster:
             with open(ARQUIVO_CONFIG, 'w') as f: json.dump(self.config, f)
         except Exception as e:
             print(f"Erro config: {e}")
-
-    def alternar_modo_posicao(self):
-        pass
 
     def _montar_layout(self):
         container = ttk.Frame(self.root, padding=20)
@@ -286,7 +279,7 @@ class AppMaster:
         self.atualizar_lista()
         self.root.after(100, self._atualizar_preview)
         
-        lbl_ft = ttk.Label(self.root, text="© Matheus Lôbo  |  www.matheuslobo.com  |  versão 3.0.0", font=("Helvetica", 8), foreground="#999", cursor="hand2")
+        lbl_ft = ttk.Label(self.root, text="© Matheus Lôbo  |  www.matheuslobo.com  |  versão 3.0.1", font=("Helvetica", 8), foreground="#999", cursor="hand2")
         lbl_ft.bind("<Button-1>", lambda e: webbrowser.open("https://matheuslobo.com"))
         lbl_ft.pack(side="bottom", pady=5)
 
@@ -355,7 +348,7 @@ class AppMaster:
 
     def atualizar_lista(self):
         if not os.path.exists(PASTA_CARIMBOS): os.makedirs(PASTA_CARIMBOS)
-        # Filtra para não exibir os sufixos _vazio na lista para o usuário
+        # Mantém filtro apenas por precaução caso existam resquícios da versão anterior
         arquivos = sorted([f for f in os.listdir(PASTA_CARIMBOS) if f.lower().endswith('.png') and not f.endswith('_vazio.png')])
         nomes_limpos = [f.upper().replace(".PNG", "").replace("_", " ") for f in arquivos]
         self.cb_c['values'] = nomes_limpos
@@ -368,9 +361,8 @@ class AppMaster:
         nome = self.entry_add.get().strip()
         if nome:
             try:
-                # Gera as duas versões para manter cache completo
-                nome_criado = self.gerador.gerar(nome, com_numero=True)
-                self.gerador.gerar(nome, com_numero=False)
+                # Agora gera apenas um tipo de imagem
+                nome_criado = self.gerador.gerar(nome)
                 self.atualizar_lista()
                 self.entry_add.delete(0, tk.END)
                 self.var_carimbo.set(nome_criado) 
@@ -389,7 +381,7 @@ class AppMaster:
             "inicio": self.var_inicio.get(),
             "pular_capa": self.var_pular_capa.get(),
             "cache_coords": self.cache_coords.copy(),
-            "sem_numero": self.var_sem_numero.get() # Passa a flag
+            "sem_numero": self.var_sem_numero.get() 
         }
         
         if not dados["caminho_pdf"]:
@@ -405,13 +397,12 @@ class AppMaster:
             if not nome_selecionado: raise Exception("Selecione um carimbo.")
             
             com_num = not dados["sem_numero"]
-            sufixo = "" if com_num else "_vazio"
-            arquivo_img = nome_selecionado.replace(" ", "_") + sufixo + ".png"
+            
+            arquivo_img = nome_selecionado.replace(" ", "_") + ".png"
             path_img = os.path.join(PASTA_CARIMBOS, arquivo_img)
             
-            # Gera na hora caso não exista no cache
             if not os.path.exists(path_img): 
-                self.gerador.gerar(nome_selecionado, com_numero=com_num)
+                self.gerador.gerar(nome_selecionado)
 
             reader = PdfReader(dados["caminho_pdf"])
             writer = PdfWriter()
@@ -442,7 +433,7 @@ class AppMaster:
                 
                 can.drawImage(path_img, x_f, y_f, width=tam, height=tam, mask='auto')
                 
-                # Só escreve o texto por cima se não for carimbo limpo
+                # Se for carimbo limpo, ele NÃO vai executar o código abaixo, deixando em branco para escrita manual
                 if com_num:
                     can.setFont("Helvetica-Bold", 11)
                     can.drawCentredString(x_f + (tam/2), y_f + (tam*0.45), str(num_pag))
@@ -466,7 +457,7 @@ class AppMaster:
         except Exception as e:
             self.root.after(0, lambda e=e: self._finalizar_gui(False, str(e)))
 
-    # --- PROCESSAMENTO EM BRANCO (CORRIGIDO) ---
+    # --- PROCESSAMENTO EM BRANCO ---
     def processar_em_branco(self):
         self.salvar_config()
         file_path = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF", "*.pdf")])
@@ -477,7 +468,7 @@ class AppMaster:
             "inicio": self.var_inicio.get(),
             "qtd": self.var_qtd_paginas_branco.get(),
             "coords": self.cache_coords["retrato"],
-            "sem_numero": self.var_sem_numero.get() # Passa a flag
+            "sem_numero": self.var_sem_numero.get() 
         }
         
         threading.Thread(target=self._thread_branco, args=(file_path, dados), daemon=True).start()
@@ -489,15 +480,14 @@ class AppMaster:
         try:
             nome_selecionado = dados["nome_carimbo"]
             com_num = not dados["sem_numero"]
-            sufixo = "" if com_num else "_vazio"
-            path_img = os.path.join(PASTA_CARIMBOS, nome_selecionado.replace(" ", "_") + sufixo + ".png")
+            
+            path_img = os.path.join(PASTA_CARIMBOS, nome_selecionado.replace(" ", "_") + ".png")
             
             if not os.path.exists(path_img): 
-                self.gerador.gerar(nome_selecionado, com_numero=com_num)
+                self.gerador.gerar(nome_selecionado)
 
             c = canvas.Canvas(output_path, pagesize=A4)
             
-            # Utiliza de forma correta os dados recebidos pelo dicionário
             coords = dados["coords"]
             x_f, y_f = coords[0], coords[1]
             tam = coords[2] if len(coords) > 2 else 110
@@ -509,7 +499,7 @@ class AppMaster:
                 num_pag = start_num + i
                 c.drawImage(path_img, x_f, y_f, width=tam, height=tam, mask='auto')
                 
-                # Só escreve o texto por cima se não for carimbo limpo
+                # Se for carimbo limpo, ele NÃO vai executar o código abaixo
                 if com_num:
                     c.setFont("Helvetica-Bold", 11)
                     c.drawCentredString(x_f + (tam/2), y_f + (tam*0.45), str(num_pag))

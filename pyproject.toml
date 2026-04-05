@@ -1,6 +1,6 @@
 [project]
 name = "carimbadorprefeituras"
-version = "3.0.0"
+version = "3.0.1"
 description = "Carimbador Automático para Prefeituras"
 authors = [
     {name = "Matheus Lôbo",email = "matheusls@live.com"}
