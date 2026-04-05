@@ -238,32 +238,41 @@ class AppMaster:
         
         ttk.Button(f_mesclar, text="+ Adicionar PDFs", command=self.adicionar_arquivos_mesclar, bootstyle="secondary").pack(anchor="w", pady=(0, 10))
         
-        # Container para a Lista e os Controles Laterais
+        # === CONTAINER DA LISTA (TREEVIEW) ===
         f_lista_container = ttk.Frame(f_mesclar)
-        f_lista_container.pack(fill="both", expand=True, pady=(5, 5))
+        f_lista_container.pack(fill="both", expand=True, pady=(10, 10))
         
-        # Scrollbar e Listbox
+        # Scrollbar
         scroll = ttk.Scrollbar(f_lista_container, bootstyle="round")
         scroll.pack(side="right", fill="y")
         
-        # Listbox modernizado (Estilo Flat)
-        self.listbox_mesclar = tk.Listbox(
+        # Aumentando a altura das linhas para dar "respiro" (espaçamento)
+        style = ttk.Style()
+        style.configure("Treeview", rowheight=35, font=("Helvetica", 11))
+        
+        # Treeview Modernizado
+        self.tree_mesclar = ttk.Treeview(
             f_lista_container, 
-            yscrollcommand=scroll.set, 
-            font=("Helvetica", 11),
-            bg="#ffffff",
-            fg="#333333",
-            selectbackground="#2FA4E7",   # Azul primário do tema Litera
-            selectforeground="#ffffff",
-            activestyle="none",           # Remove o contorno pontilhado feio no item clicado
-            relief="flat",                # Remove o efeito 3D antigo do Tkinter
-            highlightthickness=1,         # Cria uma borda fina e sólida
-            highlightbackground="#dee2e6",# Cor da borda neutra (padrão Bootstrap)
-            highlightcolor="#2FA4E7",     # Cor da borda quando a lista está em foco
-            selectborderwidth=0
+            columns=("num", "nome"), 
+            show="headings", 
+            selectmode="browse",
+            yscrollcommand=scroll.set,
+            bootstyle="info"
         )
-        self.listbox_mesclar.pack(side="left", fill="both", expand=True, padx=(0, 10))
-        scroll.config(command=self.listbox_mesclar.yview)
+        
+        # Configuração das Colunas
+        self.tree_mesclar.heading("num", text="#")
+        self.tree_mesclar.column("num", width=40, anchor="center", stretch=False)
+        
+        self.tree_mesclar.heading("nome", text="Arquivo PDF")
+        self.tree_mesclar.column("nome", anchor="w", stretch=True)
+        
+        self.tree_mesclar.pack(side="left", fill="both", expand=True, padx=(0, 10))
+        scroll.config(command=self.tree_mesclar.yview)
+
+        # Configuração de Cores Alternadas (Zebra Striping)
+        self.tree_mesclar.tag_configure("par", background="#f8f9fa")   # Cinza muito claro
+        self.tree_mesclar.tag_configure("impar", background="#e9ecef") # Cinza um pouco mais escuro
 
         # Botões de Ação da Lista (embaixo)
         f_lista_ctrls = ttk.Frame(f_mesclar)
@@ -278,7 +287,7 @@ class AppMaster:
         
         self.lbl_st_mesclar = ttk.Label(f_mesclar, text="Aguardando...", foreground="gray", font=("Helvetica", 9))
         self.lbl_st_mesclar.pack()
-
+        
         # ==========================================
         # === ABA 4: CONFIGURAÇÕES ===
         # ==========================================
@@ -341,48 +350,66 @@ class AppMaster:
     # ==========================================
     # === FUNÇÕES DA ABA MESCLAR ============
     # ==========================================
+    def _renderizar_lista_mesclar(self, indice_selecionado=None):
+        """Limpa a visualização e recria mantendo a numeração e cores corretas"""
+        for item in self.tree_mesclar.get_children():
+            self.tree_mesclar.delete(item)
+            
+        for i, arq in enumerate(self.arquivos_mesclar):
+            tag = "par" if i % 2 == 0 else "impar"
+            nome = os.path.basename(arq)
+            # O 'iid' será o próprio índice em formato string para facilitar a seleção
+            self.tree_mesclar.insert("", "end", iid=str(i), values=(f"{i+1}º", nome), tags=(tag,))
+            
+        if indice_selecionado is not None and str(indice_selecionado) in self.tree_mesclar.get_children():
+            self.tree_mesclar.selection_set(str(indice_selecionado))
+            self.tree_mesclar.focus(str(indice_selecionado))
+
     def adicionar_arquivos_mesclar(self):
         arquivos = filedialog.askopenfilenames(filetypes=[("Arquivos PDF", "*.pdf")])
+        mudou = False
         for arq in arquivos:
             if arq not in self.arquivos_mesclar:
                 self.arquivos_mesclar.append(arq)
-                # Exibe apenas o nome do arquivo para ficar limpo
-                self.listbox_mesclar.insert(tk.END, os.path.basename(arq))
+                mudou = True
+        
+        if mudou:
+            self._renderizar_lista_mesclar()
 
     def mover_cima_mesclar(self):
-        sel = self.listbox_mesclar.curselection()
+        sel = self.tree_mesclar.selection()
         if not sel: return
-        idx = sel[0]
+        idx = int(sel[0])
+        
         if idx > 0:
             # Troca no array
             self.arquivos_mesclar[idx], self.arquivos_mesclar[idx-1] = self.arquivos_mesclar[idx-1], self.arquivos_mesclar[idx]
-            # Troca na Interface
-            texto = self.listbox_mesclar.get(idx)
-            self.listbox_mesclar.delete(idx)
-            self.listbox_mesclar.insert(idx-1, texto)
-            self.listbox_mesclar.selection_set(idx-1)
+            # Re-renderiza e mantém a seleção no item que subiu
+            self._renderizar_lista_mesclar(indice_selecionado=idx-1)
 
     def mover_baixo_mesclar(self):
-        sel = self.listbox_mesclar.curselection()
+        sel = self.tree_mesclar.selection()
         if not sel: return
-        idx = sel[0]
+        idx = int(sel[0])
+        
         if idx < len(self.arquivos_mesclar) - 1:
+            # Troca no array
             self.arquivos_mesclar[idx], self.arquivos_mesclar[idx+1] = self.arquivos_mesclar[idx+1], self.arquivos_mesclar[idx]
-            texto = self.listbox_mesclar.get(idx)
-            self.listbox_mesclar.delete(idx)
-            self.listbox_mesclar.insert(idx+1, texto)
-            self.listbox_mesclar.selection_set(idx+1)
+            # Re-renderiza e mantém a seleção no item que desceu
+            self._renderizar_lista_mesclar(indice_selecionado=idx+1)
 
     def remover_arquivo_mesclar(self):
-        sel = self.listbox_mesclar.curselection()
+        sel = self.tree_mesclar.selection()
         if not sel: return
-        idx = sel[0]
+        idx = int(sel[0])
+        
         self.arquivos_mesclar.pop(idx)
-        self.listbox_mesclar.delete(idx)
-        if self.arquivos_mesclar:
-            # Seleciona o anterior ou o próximo para manter fluidez
-            new_idx = idx if idx < len(self.arquivos_mesclar) else idx - 1
-            self.listbox_mesclar.selection_set(new_idx)
+        
+        # Lógica para selecionar o item correto após exclusão
+        novo_idx = idx if idx < len(self.arquivos_mesclar) else idx - 1
+        novo_idx = novo_idx if novo_idx >= 0 else None
+        
+        self._renderizar_lista_mesclar(indice_selecionado=novo_idx)
 
     def processar_mesclar(self):
         if not self.arquivos_mesclar:
@@ -422,13 +449,14 @@ class AppMaster:
         if sucesso:
             self.lbl_st_mesclar.config(text="Concluído.", bootstyle="success")
             messagebox.showinfo("Sucesso", msg)
-            # Limpa a lista após concluir (Opcional, mas recomendado)
+            
+            # Limpa a lista após salvar com sucesso
             self.arquivos_mesclar.clear()
-            self.listbox_mesclar.delete(0, tk.END)
+            self._renderizar_lista_mesclar()
         else:
             self.lbl_st_mesclar.config(text="Erro.", bootstyle="danger")
             messagebox.showerror("Erro", msg)
-
+            
     # ==========================================
     # === FUNÇÕES DE CONFIGURAÇÃO E PREVIEW ===
     # ==========================================
